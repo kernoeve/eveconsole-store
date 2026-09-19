@@ -1,0 +1,27 @@
+# One store, one Worker, one D1 database.
+#
+# Deploying by hand:
+#   1. npx wrangler d1 create eveconsole-store      → paste the database_id below
+#   2. npx wrangler secret put STORE_SYNC_SECRET    → the secret shown on the store's Config tab
+#   3. npx wrangler secret put EVE_CLIENT_ID        → from developers.eveonline.com, callback
+#      npx wrangler secret put EVE_CLIENT_SECRET      https://<your site>/auth/callback, no scopes
+#   4. npx wrangler deploy
+#   5. Put the site's address on the store's Config tab in EVE Console and switch the web
+#      channel on. The schema is created on the site's first request.
+#
+# The app's Deploy button does the same steps through Cloudflare's API.
+
+name = "eveconsole-store"
+main = "src/index.tsx"
+compatibility_date = "2025-06-01"
+
+[vars]
+SITE_VERSION = "0.1.0"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "eveconsole-store"
+database_id = "REPLACE-WITH-YOUR-DATABASE-ID"
+
+[observability]
+enabled = true

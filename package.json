@@ -1,0 +1,24 @@
+{
+  "name": "eveconsole-store",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A shop front for an EVE Console store: a Cloudflare Worker the app pushes a price list and order book to, and pulls orders from.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bundle": "node scripts/bundle.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.20260918.1",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.135.0"
+  }
+}
