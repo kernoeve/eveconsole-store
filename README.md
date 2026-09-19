@@ -32,15 +32,17 @@ and never touches the orders and settings the site already holds.
 The store's Config tab can deploy and update the site for you through Cloudflare's API, under
 "Hosting on Cloudflare":
 
-1. Make an API token at dash.cloudflare.com (My Profile, API Tokens) from the "Edit Cloudflare
-   Workers" template with "D1: Edit" added. Paste it into the app and press Save token; it stays
-   on that machine only, encrypted for your account.
-2. Pick the account if the token reaches more than one, and a worker name; the site's address
-   is that name on your account's workers.dev.
-3. Press Deploy. The app creates the database, uploads the newest release of the site, sets the
-   store's secret, switches on the workers.dev address and puts it on the store.
-4. Register the EVE application with the callback the app shows (the site address plus
-   `/auth/callback`), enter its client id and secret key, and press Deploy again.
+1. Register an EVE application (the app links to the developer site): any name, Authentication
+   only, and the callback address the app shows. Enter its Client ID and Secret Key in the app;
+   they are kept with the store and placed on the site at every deploy.
+2. Make an API token (the app links to the page): the "Edit Cloudflare Workers" template with
+   "D1: Edit" added. Paste it into the app and press Save token; it stays on that machine only,
+   encrypted for your account.
+3. Pick the account if the token reaches more than one, and a worker name; the site's address
+   is that name on your account's workers.dev, which the app chooses if the account has none yet.
+4. Press Deploy or update site. The app creates the database, uploads the newest release, sets
+   the secrets, switches on the address and puts it on the store. If the callback was not known
+   before the first deploy, register it now and deploy again.
 
 Press Check to see what the site runs against the newest release, and Deploy again to update;
 the site's orders and settings are never touched. A site set up by hand and one deployed by the
