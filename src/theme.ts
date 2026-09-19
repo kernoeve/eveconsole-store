@@ -67,7 +67,7 @@ header.bar nav a:hover { color: var(--text-primary); text-decoration: none; }
 header.bar nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
 header.bar .who { margin-left: auto; font-size: 12px; color: var(--text-dim); display: flex; gap: 10px; align-items: center; }
 header.bar .who form { display: inline; }
-.panel { background: var(--surface-panel); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 14px 16px; margin-top: 16px; }
+.panel { background: var(--surface-panel); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 14px 16px; margin-top: 16px; overflow-x: auto; }
 .panel h2 { font-size: 13px; font-weight: 600; color: var(--accent); margin: 0 0 8px; }
 .dim { color: var(--text-dim); font-size: 12px; }
 .faint { color: var(--text-faint); font-size: 11px; }

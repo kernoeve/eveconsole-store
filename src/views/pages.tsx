@@ -38,6 +38,7 @@ function availableNow(i: CatalogueItem, pending: Map<number, number>): number {
 }
 
 function stateOf(i: CatalogueItem, available: number): { cls: string; text: string } {
+  if (i.unitPrice == null) return { cls: "muted", text: "" };
   if (available > 0) return { cls: "good", text: `${formatUnits(available)} available now` };
   if (i.inBuild > 0) return { cls: "warn", text: `${formatUnits(i.inBuild)} in build` };
   return { cls: "muted", text: "Built to order" };
@@ -96,7 +97,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                       <td><Item typeId={i.typeId} name={i.name} group={i.groupName} /></td>
                       <td class="num">{i.unitPrice != null ? formatIsk(i.unitPrice) : <span class="dim">not for sale</span>}</td>
                       <td>
-                        <span class={`state ${st.cls}`}>{st.text}</span>
+                        {st.text ? <span class={`state ${st.cls}`}>{st.text}</span> : null}
                         {c.showCompletionDate && i.earliestJobEnd && available === 0 && i.inBuild > 0 && (
                           <span class="dim"> · earliest {i.earliestJobEnd.slice(0, 10)}</span>
                         )}
