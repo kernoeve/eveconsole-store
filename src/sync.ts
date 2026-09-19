@@ -6,7 +6,8 @@
 
 import type { Context } from "hono";
 import type { AppEnv } from "./env";
-import { verifySync } from "./crypto";
+import { sha256Hex, verifySync } from "./crypto";
+
 import { ensureSchema, meta, now, SCHEMA_VERSION } from "./db";
 import {
   PROTOCOL, SIGNATURE_HEADER, TIMESTAMP_HEADER,
@@ -103,16 +104,22 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
   return c.json(response);
 }
 
-/** GET /api/version — for the app's update check. Nothing secret, nothing about buyers; whether
- * the site can sign anyone in is a fact, not a key. */
+/** GET /api/version — for the app's update check. Nothing secret, nothing about buyers. Which EVE
+ * application the site signs in with is said as the client id (public in every login redirect)
+ * and a short fingerprint of the secret, so the app can tell whether they are the keys it holds. */
 export async function handleVersion(c: Context<AppEnv>): Promise<Response> {
   await ensureSchema(c.env.DB);
+  const clientId = c.env.EVE_CLIENT_ID ?? "";
+  const secret = c.env.EVE_CLIENT_SECRET ?? "";
   return c.json({
     protocol: PROTOCOL,
     siteVersion: c.env.SITE_VERSION ?? "",
     schemaVersion: SCHEMA_VERSION,
     generation: (await meta(c.env.DB, "generation")) ?? "",
-    ssoConfigured: !!(c.env.EVE_CLIENT_ID && c.env.EVE_CLIENT_SECRET),
+    ssoConfigured: !!(clientId && secret),
+    ssoClientId: clientId,
+    ssoKeyFingerprint: secret ? (await sha256Hex(secret.trim())).slice(0, 12) : "",
   });
 }
+
 

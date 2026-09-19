@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
 import app from "../src/index";
-import { signSync, verifySync } from "../src/crypto";
+import { sha256Hex, signSync, verifySync } from "../src/crypto";
+
 import { PROTOCOL, SIGNATURE_HEADER, TIMESTAMP_HEADER, type SyncRequest, type SyncResponse } from "../src/protocol";
 import { ensureSchema } from "../src/db";
 import { placeOrder, cancelOrder } from "../src/orders";
@@ -152,8 +153,11 @@ describe("pages", () => {
     const r = await app.request("/auth/login", {}, { ...env, EVE_CLIENT_ID: "" });
     expect(r.status).toBe(503);
     expect(await r.text()).toContain("Sign-in is not set up yet");
-    const v = await (await app.request("/api/version", {}, env)).json<{ ssoConfigured: boolean }>();
+    const v = await (await app.request("/api/version", {}, env)).json<{ ssoConfigured: boolean; ssoClientId: string; ssoKeyFingerprint: string }>();
     expect(v.ssoConfigured).toBe(true);
+    expect(v.ssoClientId).toBe("test-client");
+    expect(v.ssoKeyFingerprint).toBe((await sha256Hex("test-secret")).slice(0, 12));
+
     const w = await (await app.request("/api/version", {}, { ...env, EVE_CLIENT_SECRET: "" })).json<{ ssoConfigured: boolean }>();
     expect(w.ssoConfigured).toBe(false);
   });
