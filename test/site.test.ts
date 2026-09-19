@@ -153,3 +153,71 @@ describe("pages", () => {
     expect([302, 403]).toContain(r.status);
   });
 });
+
+describe("the buyer's pages", () => {
+  /** A session row of the buyer's, the way sign-in leaves one, and the cookie that names it. */
+  async function signedIn(): Promise<{ cookie: string; csrf: string }> {
+    await ensureSchema(env.DB);
+    const ts = new Date().toISOString();
+    const id = "test-session-" + Math.random().toString(36).slice(2);
+    await env.DB.prepare(
+      `INSERT INTO sessions (id, character_id, name, corp_id, alliance_id, csrf, created_at, expires_at, last_seen_at)
+       VALUES (?1, ?2, ?3, ?4, NULL, 'tok', ?5, ?6, ?5)`,
+    ).bind(id, buyer.characterId, buyer.name, buyer.corporationId, ts, new Date(Date.now() + 3_600_000).toISOString()).run();
+    return { cookie: `sid=${id}`, csrf: "tok" };
+  }
+
+  it("renders the price list with items, prices and stock for a public shop", async () => {
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }));
+    const r = await app.request("/", {}, env);
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain("Widget");
+    expect(html).toContain("1,100,000 ISK");
+    expect(html).toContain("2 available now");   // 3 in stock, 1 reserved
+    expect(html).toContain("not for sale");      // Gadget carries no price
+    expect(html).toContain("Sign in with EVE");
+  });
+
+  it("lets a signed-in buyer order from the page, see it waiting, and withdraw it", async () => {
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }));
+    const s = await signedIn();
+    const home = await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(home).toContain(buyer.name);
+    expect(home).toContain('name="_csrf" value="tok"');
+
+    const placed = await app.request("/orders", {
+      method: "POST", headers: { Cookie: s.cookie },
+      body: new URLSearchParams({ _csrf: s.csrf, typeId: "2001", units: "2" }),
+    }, env);
+    expect(placed.status).toBe(302);
+    expect(placed.headers.get("Location")).toBe("/orders");
+    const flashCookie = (placed.headers.get("Set-Cookie") ?? "").split(";")[0];
+    expect(flashCookie).toMatch(/^flash=/);
+
+    const html = await (await app.request("/orders", { headers: { Cookie: `${s.cookie}; ${flashCookie}` } }, env)).text();
+    expect(html).toContain("Order sent to the store");
+    expect(html).toContain("2 × Widget");
+    expect(html).toContain("2,200,000 ISK");
+    expect(html).toContain("not confirmed yet");
+    const id = /\/web-orders\/([a-z0-9]+)\/cancel/.exec(html)?.[1];
+    expect(id).toBeDefined();
+
+    const withdrawn = await app.request(`/web-orders/${id}/cancel`, {
+      method: "POST", headers: { Cookie: s.cookie }, body: new URLSearchParams({ _csrf: s.csrf }),
+    }, env);
+    expect(withdrawn.status).toBe(302);
+    const row = await env.DB.prepare(`SELECT state FROM web_orders WHERE id = ?1`).bind(id).first<{ state: string }>();
+    expect(row?.state).toBe("cancelled");
+    const after = await (await app.request("/orders", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(after).toContain("Withdrawn");
+  });
+
+  it("refuses a form whose token is not the session's", async () => {
+    const s = await signedIn();
+    const r = await app.request("/orders", {
+      method: "POST", headers: { Cookie: s.cookie }, body: new URLSearchParams({ _csrf: "wrong", typeId: "2001", units: "1" }),
+    }, env);
+    expect(r.status).toBe(403);
+  });
+});
