@@ -16,7 +16,8 @@ main = "src/index.tsx"
 compatibility_date = "2025-06-01"
 
 [vars]
-SITE_VERSION = "0.1.0"
+SITE_VERSION = "0.1.1"
+
 
 [[d1_databases]]
 binding = "DB"

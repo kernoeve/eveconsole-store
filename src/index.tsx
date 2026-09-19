@@ -149,7 +149,19 @@ app.post("/theme", async (c) => {
 
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
-app.get("/auth/login", beginLogin);
+app.get("/auth/login", async (c) => {
+  // Without an EVE application there is nowhere to send the buyer; say so here rather than let
+  // EVE answer "client could not be found" for an id of undefined.
+  if (!c.env.EVE_CLIENT_ID || !c.env.EVE_CLIENT_SECRET) {
+    const { store, ...common } = await page(c);
+    return c.html(<Layout storeName={store?.info.name ?? "Store"} active="none" {...common}>
+      <Message title="Sign-in is not set up yet"
+               text="This site has no EVE application keys. The store's owner enters the application's Client ID and Secret Key in EVE Console (Stores, Config, EVE application), or sets them as the site's EVE_CLIENT_ID and EVE_CLIENT_SECRET secrets." />
+    </Layout>, 503);
+  }
+  return beginLogin(c);
+});
+
 
 app.get("/auth/callback", async (c) => {
   const result = await finishLogin(c);

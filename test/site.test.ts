@@ -148,7 +148,18 @@ describe("pages", () => {
     expect(text).toContain("--surface-base");
   });
 
+  it("says so, rather than sending anyone to EVE, while the site has no application keys", async () => {
+    const r = await app.request("/auth/login", {}, { ...env, EVE_CLIENT_ID: "" });
+    expect(r.status).toBe(503);
+    expect(await r.text()).toContain("Sign-in is not set up yet");
+    const v = await (await app.request("/api/version", {}, env)).json<{ ssoConfigured: boolean }>();
+    expect(v.ssoConfigured).toBe(true);
+    const w = await (await app.request("/api/version", {}, { ...env, EVE_CLIENT_SECRET: "" })).json<{ ssoConfigured: boolean }>();
+    expect(w.ssoConfigured).toBe(false);
+  });
+
   it("refuses a form without the session's token", async () => {
+
     const r = await app.request("/orders", { method: "POST", body: new URLSearchParams({ typeId: "2001", units: "1" }) }, env);
     expect([302, 403]).toContain(r.status);
   });

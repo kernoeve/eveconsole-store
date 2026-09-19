@@ -103,7 +103,8 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
   return c.json(response);
 }
 
-/** GET /api/version — for the app's update check. Nothing secret, nothing about buyers. */
+/** GET /api/version — for the app's update check. Nothing secret, nothing about buyers; whether
+ * the site can sign anyone in is a fact, not a key. */
 export async function handleVersion(c: Context<AppEnv>): Promise<Response> {
   await ensureSchema(c.env.DB);
   return c.json({
@@ -111,5 +112,7 @@ export async function handleVersion(c: Context<AppEnv>): Promise<Response> {
     siteVersion: c.env.SITE_VERSION ?? "",
     schemaVersion: SCHEMA_VERSION,
     generation: (await meta(c.env.DB, "generation")) ?? "",
+    ssoConfigured: !!(c.env.EVE_CLIENT_ID && c.env.EVE_CLIENT_SECRET),
   });
 }
+

@@ -1,6 +1,7 @@
 {
   "name": "eveconsole-store",
-  "version": "0.1.0",
+  "version": "0.1.1",
+
   "private": true,
   "description": "A shop front for an EVE Console store: a Cloudflare Worker the app pushes a price list and order book to, and pulls orders from.",
   "type": "module",

@@ -173,4 +173,5 @@ overlays carry alpha first, as Avalonia writes it).
   app closes its review row; a withdrawn order is not relabelled by a later `rejected`.
 - Enforces the sender policy on every request, not only at sign-in.
 - Answers `409` with its own protocol number when the versions differ, and reports its version
-  at `GET /api/version` for the app's update check.
+  at `GET /api/version` for the app's update check, together with whether it holds EVE application
+  keys (`ssoConfigured`), so the app can say when sign-in is not set up.
