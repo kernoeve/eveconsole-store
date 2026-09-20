@@ -93,7 +93,7 @@ describe("the sync call", () => {
 
   it("hands a placed order back as an event, prices it from the catalogue, and marks it booked when the app's row arrives", async () => {
     const first = await (await sync(push())).json<SyncResponse>();
-    const placed = await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 2, "no rush");
+    const placed = await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 2, "no rush", true);
     expect(placed.ok).toBe(true);
     const id = placed.ok ? placed.id! : "";
 
@@ -119,10 +119,10 @@ describe("the sync call", () => {
 
   it("refuses to order what is not priced, more than the bound, or by the wrong person", async () => {
     await sync(push());
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2002, 1, "")).ok).toBe(false);
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 9999, 1, "")).ok).toBe(false);
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 10_001, "")).ok).toBe(false);
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 0, "")).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2002, 1, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 9999, 1, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 10_001, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 0, "", true)).ok).toBe(false);
 
     await sync(push({ orders: [{ id: 43, ref: "ZZ", buyerId: 2118000001, buyerType: "character", typeId: 2001, units: 1, totalPrice: 1, status: "pending", createdAt: "2026-09-19T00:00:00Z" }] }));
     expect((await cancelOrder(env.DB, stranger, 43)).ok).toBe(false);
@@ -131,7 +131,7 @@ describe("the sync call", () => {
 
   it("marks a web order held or declined from the app's word, and clears it when the app removes the row", async () => {
     const first = await (await sync(push())).json<SyncResponse>();
-    const placed = await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 1, "");
+    const placed = await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 1, "", true);
     const id = placed.ok ? placed.id! : "";
     await sync(push({ generation: first.generation, webOrders: [{ webOrderId: id, state: "rejected", reason: "Type not on the list." }] }));
     const row = await env.DB.prepare(`SELECT state, reason FROM web_orders WHERE id = ?1`).bind(id).first<{ state: string; reason: string }>();
@@ -226,6 +226,28 @@ describe("the buyer's pages", () => {
     expect(row?.state).toBe("cancelled");
     const after = await (await app.request("/orders", { headers: { Cookie: s.cookie } }, env)).text();
     expect(after).toContain("Withdrawn");
+  });
+
+  it("asks about EVE mail only when the store has a mailbox, and carries the answer to the store", async () => {
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }));
+    const s = await signedIn();
+    const post = (body: Record<string, string>) => app.request("/orders", {
+      method: "POST", headers: { Cookie: s.cookie },
+      body: new URLSearchParams({ _csrf: s.csrf, typeId: "2001", units: "1", ...body }),
+    }, env);
+    expect((await post({ mailUpdatesAsked: "1" })).status).toBe(302);                     // asked, box unticked
+    expect((await post({ mailUpdatesAsked: "1", mailUpdates: "1" })).status).toBe(302);   // asked, ticked
+    expect((await post({})).status).toBe(302);                                            // never asked
+    const r = await (await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }))).json<SyncResponse>();
+    const mine = r.events.filter((e) => e.kind === "order" && e.buyer.id === buyer.characterId).slice(-3);
+    expect(mine.map((e) => e.mailUpdates)).toEqual([false, true, true]);
+
+    const plain = await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(plain).toContain('id="confirm"');
+    expect(plain).not.toContain('name="mailUpdatesAsked"');   // no mailbox on this store
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone", characterName: "Some Pilot", mailUpdates: true } }));
+    const withBox = await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(withBox).toContain('name="mailUpdatesAsked"');
   });
 
   it("refuses a form whose token is not the session's", async () => {

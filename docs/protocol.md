@@ -132,6 +132,8 @@ overlays carry alpha first, as Avalonia writes it).
       "buyer": { "id": 2118000001, "name": "Some Buyer", "corporationId": 98000001, "allianceId": null },
       "contractTo": null,          // or { "id", "name", "kind" } when the buyer named someone else
       "note": "",
+      "mailUpdates": true,         // the buyer's answer to "keep me posted by EVE mail"; absent means yes
+
       "catalogueHash": "…",        // the catalogue the buyer was looking at
       "lines": [ { "typeId": 2001, "units": 2, "unitPrice": 1100000 } ]   // priced by the site from its stored catalogue
     },

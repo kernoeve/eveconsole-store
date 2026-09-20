@@ -47,6 +47,9 @@ function stateOf(i: CatalogueItem, available: number): { cls: string; text: stri
 export const CataloguePage: FC<CatalogueProps> = (p) => {
   const c = p.catalogue;
   const canOrder = !!p.session && p.allowed;
+  // The mail question is only worth asking when there is a mailbox to write from.
+  const mailbox  = !!(p.store.characterName && p.store.mailUpdates !== false);
+
   const showColumns = { stock: c.showInStock, build: c.showInBuild, reserved: c.showReserved };
   return (
     <>
@@ -108,7 +111,9 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                       {canOrder && (
                         <td>
                           {i.unitPrice != null ? (
-                            <form class="order" method="post" action="/orders">
+                            <form class="order" method="post" action="/orders"
+                                  data-name={i.name} data-price={String(i.unitPrice)} data-icon={iconUrl(i.typeId)}>
+
                               <input type="hidden" name="_csrf" value={p.session!.csrf} />
                               <input type="hidden" name="typeId" value={String(i.typeId)} />
                               <input type="number" name="units" min="1" max="10000" value="1" required />
@@ -126,13 +131,79 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
         </table>
         {c.sections.every((s) => s.items.length === 0) && <div class="empty">Nothing on the price list yet.</div>}
       </div>
+      {canOrder && <ConfirmDialog csrf={p.session!.csrf} mailbox={mailbox} />}
+      {canOrder && <script dangerouslySetInnerHTML={{ __html: confirmScript }} />}
       <p class="faint">
+
         Availability is as the store's system last reported it. An order is confirmed once the
         store has taken it, usually within a couple of minutes; until then it is listed as sent.
       </p>
     </>
   );
 };
+
+/**
+ * Asked before an order goes off: what, how many, at what each, the total, and — when the store
+ * has a mailbox — whether to be kept posted by EVE mail. The row's own form still posts on its
+ * own where the script does not run, so nothing depends on it.
+ */
+const ConfirmDialog: FC<{ csrf: string; mailbox: boolean }> = (p) => (
+  <dialog id="confirm" class="confirm">
+    <form method="post" action="/orders">
+      <input type="hidden" name="_csrf" value={p.csrf} />
+      <input type="hidden" name="typeId" value="" />
+      <input type="hidden" name="units" value="" />
+      <h2>Confirm your order</h2>
+      <div class="item">
+        <img data-f="icon" src="" alt="" width="32" height="32" />
+        <div data-f="name"></div>
+      </div>
+      <table class="facts">
+        <tr><th>Units</th><td data-f="units"></td></tr>
+        <tr><th>Price each</th><td data-f="price"></td></tr>
+        <tr><th>Total</th><td class="total" data-f="total"></td></tr>
+      </table>
+      {p.mailbox && (
+        <label class="check">
+          <input type="hidden" name="mailUpdatesAsked" value="1" />
+          <input type="checkbox" name="mailUpdates" value="1" checked />
+          Keep me posted by EVE mail as this order moves
+        </label>
+      )}
+      <p class="note">The price is as listed now. The store confirms the order within a couple of minutes, and it can be cancelled from My orders until it is contracted.</p>
+      <div class="actions">
+        <button type="button" class="link" data-close>Cancel</button>
+        <button type="submit" class="primary">Place order</button>
+      </div>
+    </form>
+  </dialog>
+);
+
+const confirmScript = `
+(function () {
+  var dlg = document.getElementById('confirm');
+  if (!dlg || typeof dlg.showModal !== 'function') return;
+  var fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+  var field = function (k) { return dlg.querySelector('[data-f=' + k + ']'); };
+  document.querySelectorAll('form.order').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var units = parseInt(form.querySelector('input[name=units]').value, 10);
+      if (!(units > 0)) return;
+      var price = Number(form.dataset.price);
+      field('name').textContent = form.dataset.name;
+      field('icon').src = form.dataset.icon;
+      field('units').textContent = fmt.format(units);
+      field('price').textContent = fmt.format(price) + ' ISK';
+      field('total').textContent = fmt.format(units * price) + ' ISK';
+      dlg.querySelector('input[name=typeId]').value = form.querySelector('input[name=typeId]').value;
+      dlg.querySelector('input[name=units]').value = String(units);
+      dlg.showModal();
+    });
+  });
+  dlg.querySelector('[data-close]').addEventListener('click', function () { dlg.close(); });
+})();
+`;
 
 // ── The buyer's orders ────────────────────────────────────────────────────
 

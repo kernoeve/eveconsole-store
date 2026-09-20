@@ -136,7 +136,10 @@ export interface SiteEvent {
   lines?: { typeId: number; units: number; unitPrice: number }[];
   contractTo?: { id: number; name: string; kind: "character" | "corporation" } | null;
   note?: string;
+  /** The buyer's answer to "keep me posted by EVE mail"; absent means yes. */
+  mailUpdates?: boolean;
   catalogueHash?: string;
+
   orderId?: number | null;
   reason?: string;
 }

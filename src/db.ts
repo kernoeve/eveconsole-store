@@ -8,7 +8,8 @@
 import { randomToken } from "./crypto";
 import type { Catalogue, StoreInfo } from "./protocol";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
 
 const steps: { version: number; sql: string[] }[] = [
   {
@@ -59,7 +60,13 @@ const steps: { version: number; sql: string[] }[] = [
          state TEXT PRIMARY KEY, verifier TEXT NOT NULL, next TEXT NOT NULL DEFAULT '/', created_at TEXT NOT NULL)`,
     ],
   },
+  {
+    version: 2,
+    // Whether the buyer wants EVE mail as the order moves, asked when the order is placed.
+    sql: [`ALTER TABLE web_orders ADD COLUMN mail_updates INTEGER NOT NULL DEFAULT 1`],
+  },
 ];
+
 
 let ensured: Promise<void> | null = null;
 

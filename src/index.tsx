@@ -108,8 +108,13 @@ app.post("/orders", async (c) => {
   if (!store?.catalogue) { flash(c, "bad", "The price list is not available."); return c.redirect("/"); }
   if (!(await isAllowed(c.env.DB, store.info, session))) return c.redirect("/");
 
+  // The mail question is only asked when the store has a mailbox; a form that never asked it
+  // (no script, or no mailbox) means the default, which is yes.
+  const asked = form.get("mailUpdatesAsked") != null;
+  const mailUpdates = asked ? form.get("mailUpdates") != null : true;
   const r = await placeOrder(c.env.DB, session, store.catalogue, store.catalogueHash,
-    Number(form.get("typeId")), Number(form.get("units")), String(form.get("note") ?? ""));
+    Number(form.get("typeId")), Number(form.get("units")), String(form.get("note") ?? ""), mailUpdates);
+
   if (r.ok) {
     flash(c, "good", "Order sent to the store. It is confirmed once the store's system has taken it, usually within a couple of minutes.");
     return c.redirect("/orders");

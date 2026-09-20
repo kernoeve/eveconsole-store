@@ -126,6 +126,23 @@ button.link:hover { color: var(--text-primary); text-decoration: underline; }
   header.bar .wrap { flex-wrap: wrap; gap: 8px; }
   header.bar .who { margin-left: 0; width: 100%; }
 }
+dialog.confirm {
+  background: var(--surface-panel); color: var(--text-primary); border: 1px solid var(--border-default);
+  border-radius: 6px; padding: 18px 20px; width: min(420px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
+}
+dialog.confirm::backdrop { background: var(--surface-overlay-strong); }
+dialog.confirm h2 { font-size: 14px; font-weight: 600; color: var(--accent); margin: 0 0 12px; }
+dialog.confirm .item { gap: 10px; }
+dialog.confirm .item img { width: 32px; height: 32px; }
+dialog.confirm .item div { font-size: 14px; color: var(--text-bright); }
+dialog.confirm table.facts { width: 100%; margin: 12px 0 4px; font-size: 13px; border-collapse: collapse; }
+dialog.confirm table.facts th { text-align: left; font-weight: normal; color: var(--text-muted); padding: 4px 0; }
+dialog.confirm table.facts td { text-align: right; font-variant-numeric: tabular-nums; padding: 4px 0; }
+dialog.confirm table.facts td.total { color: var(--text-bright); font-weight: 600; border-top: 1px solid var(--border-subtle); }
+dialog.confirm label.check { display: flex; gap: 8px; align-items: center; font-size: 12px; margin: 8px 0 0; cursor: pointer; }
+dialog.confirm .note { margin: 10px 0 0; }
+dialog.confirm .actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin-top: 14px; }
+dialog.confirm button.primary { padding: 6px 16px; }
 @media (prefers-reduced-motion: no-preference) {
   table.grid tr td { transition: background .12s ease; }
 }
