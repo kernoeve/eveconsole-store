@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { env } from "cloudflare:test";
+import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
 import app from "../src/index";
 import { base64Decode, sha256Hex, signSync, verifySync } from "../src/crypto";
 import { renderBlurb } from "../src/markup";
@@ -443,6 +443,29 @@ describe("the buyer's pages", () => {
     const home = await (await app.request("/", {}, env)).text();
     expect(home).toContain('<option value="dark" selected="">Dark</option>');
     expect(home).toContain('<option value="light">Light</option>');
+  });
+
+  it("raises a visit when a buyer comes back after a while, and only for an app that asks", async () => {
+    await sync(push());
+    const s = await signedIn();
+    const page = async (path: string) => {
+      const ctx = createExecutionContext();
+      await app.request(path, { headers: { Cookie: s.cookie } }, env, ctx);
+      await waitOnExecutionContext(ctx);
+    };
+    await page("/");                                   // a fresh session turning a page is not a visit
+    await env.DB.prepare(`UPDATE sessions SET last_seen_at = ?2 WHERE id = ?1`)
+      .bind(s.cookie.slice("sid=".length), new Date(Date.now() - 2 * 3_600_000).toISOString()).run();
+    await page("/");                                   // two hours away: this one is
+    await page("/orders");                             // straight after: the same visit
+
+    const quiet = await (await sync(push())).json<SyncResponse>();
+    expect(quiet.events.filter((e) => e.kind === "visit")).toHaveLength(0);
+    const told = await (await sync(push({ visits: true }))).json<SyncResponse>();
+    const visits = told.events.filter((e) => e.kind === "visit");
+    expect(visits).toHaveLength(1);
+    expect(visits[0].buyer.id).toBe(buyer.characterId);
+    expect(visits[0].awayMinutes).toBeGreaterThanOrEqual(119);
   });
 
   it("refuses a form whose token is not the session's", async () => {

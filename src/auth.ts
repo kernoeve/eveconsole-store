@@ -13,6 +13,7 @@ import type { AppEnv, Session } from "./env";
 import { base64url, base64urlDecode, randomToken, sha256Hex } from "./crypto";
 import { ensureSchema, loadStore, now } from "./db";
 import { isAllowed, restrictedText } from "./policy";
+import { recordVisit, VISIT_GAP_MINUTES } from "./visits";
 
 const SSO_AUTHORIZE = "https://login.eveonline.com/v2/oauth/authorize/";
 const SSO_TOKEN     = "https://login.eveonline.com/v2/oauth/token";
@@ -138,6 +139,7 @@ export async function finishLogin(c: Context<AppEnv>): Promise<LoginResult | Log
     `INSERT INTO sessions (id, character_id, name, corp_id, alliance_id, csrf, created_at, expires_at, last_seen_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?7)`,
   ).bind(session.id, characterId, name, session.corporationId, session.allianceId, session.csrf, created, expires).run();
+  await recordVisit(db, session, null);   // signing in is arriving
 
   setCookie(c, SESSION_COOKIE, session.id, {
     httpOnly: true, secure: secure(c), sameSite: "Lax", path: "/", maxAge: SESSION_DAYS * 86_400,
@@ -164,16 +166,28 @@ export const sessionMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
       `SELECT id, character_id, name, corp_id, alliance_id, csrf, last_seen_at FROM sessions WHERE id = ?1 AND expires_at > ?2`,
     ).bind(sid, ts).first<{ id: string; character_id: number; name: string; corp_id: number; alliance_id: number | null; csrf: string; last_seen_at: string }>();
     if (row) {
-      c.set("session", { id: row.id, characterId: row.character_id, name: row.name, corporationId: row.corp_id, allianceId: row.alliance_id, csrf: row.csrf });
+      const session: Session = { id: row.id, characterId: row.character_id, name: row.name, corporationId: row.corp_id, allianceId: row.alliance_id, csrf: row.csrf };
+      c.set("session", session);
       // Touched at most once a minute: it feeds the app's "somebody is here" signal, not an audit.
-      if (Date.parse(row.last_seen_at) < Date.now() - TOUCH_SECONDS * 1000)
-        c.executionCtx.waitUntil(c.env.DB.prepare(`UPDATE sessions SET last_seen_at = ?2 WHERE id = ?1`).bind(sid, ts).run());
+      const away = Date.now() - Date.parse(row.last_seen_at);
+      if (away > TOUCH_SECONDS * 1000) {
+        background(c, c.env.DB.prepare(`UPDATE sessions SET last_seen_at = ?2 WHERE id = ?1`).bind(sid, ts).run());
+        // Back after a while: one visit, not one per page turned.
+        if (away > VISIT_GAP_MINUTES * 60_000) background(c, recordVisit(c.env.DB, session, Math.round(away / 60_000)));
+      }
     } else {
       deleteCookie(c, SESSION_COOKIE, { path: "/" });
     }
   }
   await next();
 };
+
+/** Work that need not finish before the response: handed to the runtime when there is one, left
+ * to run on its own where there is not (a test may call the app without an execution context). */
+function background(c: Context<AppEnv>, work: Promise<unknown>): void {
+  try { c.executionCtx.waitUntil(work); }
+  catch { void work; }
+}
 
 /** True when the form's token is the session's. Every state-changing POST checks this first. */
 export function csrfOk(session: Session, form: FormData): boolean {

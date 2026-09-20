@@ -106,7 +106,8 @@ in the next call.
     { "webOrderId": "01J…", "state": "review",   "reason": "" },
     { "webOrderId": "01K…", "state": "rejected", "reason": "Type 9999 is not on the price list." }
   ],
-  "more": false                   // more order rows are waiting; the app calls again at once
+  "more": false,                  // more order rows are waiting; the app calls again at once
+  "visits": true                  // the app knows the "visit" event (site 0.1.11+); without it none are sent
 }
 ```
 
@@ -148,6 +149,12 @@ overlays carry alpha first, as Avalonia writes it).
       "orderId": 41,               // the app's id where the site knows it; else webOrderId of an unconfirmed order
       "webOrderId": "",
       "reason": ""
+    },
+    {
+      "seq": 126, "kind": "visit", "at": "2026-09-20T09:00:00Z",   // a buyer arrived: signed in, or back after 30+ minutes away
+      "buyer": { "id": 2118000001, "name": "Some Buyer", "corporationId": 98000001, "allianceId": null },
+      "webOrderId": "",
+      "awayMinutes": 185           // null when they signed in
     }
   ],
   "activeSessions": 2,            // signed-in sessions active in the last few minutes

@@ -81,7 +81,9 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
   if (writes.length > 0) await db.batch(writes);
 
   // ── What buyers did since the cursor ──
-  const rows = await db.prepare(`SELECT seq, kind, json FROM events WHERE seq > ?1 ORDER BY seq LIMIT ?2`)
+  // Visits go only to an app that said it knows them; an older app would refuse the kind. Its
+  // cursor still prunes them with everything else once it has moved past.
+  const rows = await db.prepare(`SELECT seq, kind, json FROM events WHERE seq > ?1 ${req.visits ? "" : "AND kind <> 'visit'"} ORDER BY seq LIMIT ?2`)
     .bind(req.cursor ?? 0, EVENTS_PER_REPLY).all<{ seq: number; kind: string; json: string }>();
   const events: SiteEvent[] = rows.results.map((r) => ({ ...(JSON.parse(r.json) as SiteEvent), seq: r.seq }));
 

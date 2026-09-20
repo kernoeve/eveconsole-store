@@ -22,6 +22,9 @@ export interface SyncRequest {
   removed: number[];
   webOrders: WebOrderState[];
   more?: boolean;
+  /** Whether the app knows the "visit" event kind; without it none are sent, so an older app
+   * never sees a kind it would refuse. */
+  visits?: boolean;
 }
 
 export interface StoreInfo {
@@ -177,7 +180,7 @@ export interface SiteBuyer {
 
 export interface SiteEvent {
   seq: number;
-  kind: "order" | "cancel";
+  kind: "order" | "cancel" | "visit";
   at: string;
   webOrderId: string;
   buyer: SiteBuyer;
@@ -190,4 +193,7 @@ export interface SiteEvent {
 
   orderId?: number | null;
   reason?: string;
+
+  /** A visit: how long the buyer had been away, or null when they just signed in. */
+  awayMinutes?: number | null;
 }
