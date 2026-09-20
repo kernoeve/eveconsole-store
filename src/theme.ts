@@ -11,11 +11,47 @@ import type { Theme } from "./protocol";
 
 export type Variant = "dark" | "light";
 
-/** The variant a buyer with this cookie sees, or null to follow their system preference. */
-export function pickVariant(theme: Theme, cookie: string | undefined): { variant: Variant; explicit: boolean } {
-  const fallback: Variant = theme.default === "light" ? "light" : "dark";
-  if (theme.buyerMaySwitch && (cookie === "dark" || cookie === "light")) return { variant: cookie, explicit: true };
-  return { variant: fallback, explicit: !theme.buyerMaySwitch };
+export interface ThemeChoice { key: string; name: string; base: Variant; tokens: Record<string, string> }
+
+export interface ThemePick {
+  /** What this buyer sees. */
+  chosen: ThemeChoice;
+  /** Whether it is settled — their own pick, or nothing else on offer — rather than open to
+   * their system preference swapping in the partner. */
+  explicit: boolean;
+  /** Everything on offer, the store's own first; more than one and the header shows a dropdown. */
+  options: ThemeChoice[];
+  /** The theme the buyer's system preference may swap in until they pick: the store's own
+   * theme's opposite in the same family, else any of the other base. */
+  partner: ThemeChoice | null;
+}
+
+const family = (key: string) => key.replace(/-(dark|light)$/, "");
+
+/** The themes on offer: the list the app pushed, or the dark/light pair an older app pushed. */
+export function themeOptions(theme: Theme): ThemeChoice[] {
+  if (theme.themes && theme.themes.length > 0)
+    return theme.themes.map((t) => ({ key: t.key, name: t.name, base: t.base === "light" ? "light" : "dark", tokens: t.tokens ?? {} }));
+  const own: Variant = theme.default === "light" ? "light" : "dark";
+  const other: Variant = own === "dark" ? "light" : "dark";
+  const options: ThemeChoice[] = [{ key: own, name: own === "dark" ? "Dark" : "Light", base: own, tokens: theme.variants[own] ?? {} }];
+  if (theme.buyerMaySwitch && theme.variants[other])
+    options.push({ key: other, name: other === "dark" ? "Dark" : "Light", base: other, tokens: theme.variants[other] });
+  return options;
+}
+
+/** What a buyer with this cookie sees: their pick when it is still on offer, else the store's own. */
+export function pickTheme(theme: Theme, cookie: string | undefined): ThemePick {
+  const options = themeOptions(theme);
+  const own = options[0];
+  const picked = !cookie ? undefined
+    : options.find((o) => o.key === cookie)
+      // The cookie an older site set said only dark or light.
+      ?? ((cookie === "dark" || cookie === "light") ? options.find((o) => o.base === cookie) : undefined);
+  if (picked) return { chosen: picked, explicit: true, options, partner: null };
+  const partner = options.find((o) => o.base !== own.base && family(o.key) === family(own.key))
+               ?? options.find((o) => o.base !== own.base) ?? null;
+  return { chosen: own, explicit: partner === null, options, partner };
 }
 
 function declarations(tokens: Record<string, string>): string {
@@ -34,13 +70,10 @@ export function cssColour(hex: string): string {
  * variant is offered under the buyer's system preference; an explicit choice stamps the
  * root with data-theme and wins in both directions.
  */
-export function themeStyle(theme: Theme, variant: Variant, explicit: boolean): string {
-  const chosen = theme.variants[variant] ?? theme.variants[theme.default] ?? {};
-  const otherName: Variant = variant === "dark" ? "light" : "dark";
-  const other = theme.variants[otherName];
-  let css = `:root { color-scheme: ${variant}; ${declarations(chosen)} }`;
-  if (!explicit && other)
-    css += ` @media (prefers-color-scheme: ${otherName}) { :root:not([data-theme]) { color-scheme: ${otherName}; ${declarations(other)} } }`;
+export function themeStyle(pick: ThemePick): string {
+  let css = `:root { color-scheme: ${pick.chosen.base}; ${declarations(pick.chosen.tokens)} }`;
+  if (!pick.explicit && pick.partner)
+    css += ` @media (prefers-color-scheme: ${pick.partner.base}) { :root:not([data-theme]) { color-scheme: ${pick.partner.base}; ${declarations(pick.partner.tokens)} } }`;
   return css;
 }
 
@@ -69,6 +102,11 @@ header.bar nav a.active { color: var(--accent); border-bottom-color: var(--accen
 header.bar .who { margin-left: auto; font-size: 12px; color: var(--text-dim); display: flex; gap: 10px; align-items: center; }
 header.bar .who > * { display: inline-flex; align-items: center; height: 22px; }
 header.bar .who button.link { line-height: 1; }
+header.bar .who select {
+  background: var(--surface-raised); color: var(--text-primary); border: 1px solid var(--border-default);
+  border-radius: 3px; font: inherit; font-size: 12px; padding: 0 6px; height: 22px; cursor: pointer;
+}
+header.bar .who select:hover { border-color: var(--border-strong); }
 
 .panel { background: var(--surface-panel); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 14px 16px; margin-top: 16px; overflow-x: auto; }
 .panel h2 { font-size: 13px; font-weight: 600; color: var(--accent); margin: 0 0 8px; }

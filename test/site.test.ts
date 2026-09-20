@@ -378,6 +378,49 @@ describe("the buyer's pages", () => {
     expect(await (await app.request("/", {}, env)).text()).not.toContain('class="banner"');
   });
 
+  it("offers the themes the app lists as a dropdown, and keeps the buyer's pick", async () => {
+    const themes = [
+      { key: "blue-dark",  name: "Blue (dark)",  base: "dark"  as const, tokens: { "surface-base": "#121a26" } },
+      { key: "blue-light", name: "Blue (light)", base: "light" as const, tokens: { "surface-base": "#dfe6ee" } },
+      { key: "pink-dark",  name: "Pink (dark)",  base: "dark"  as const, tokens: { "surface-base": "#1c1218" } },
+    ];
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone", theme: { ...push().store.theme, key: "blue-dark", themes } } }));
+    const home = await (await app.request("/", {}, env)).text();
+    expect(home).toContain('<select name="to"');
+    expect(home).toContain('<option value="pink-dark">Pink (dark)</option>');
+    expect(home).toContain("--surface-base: #121a26");
+    expect(home).toContain("prefers-color-scheme: light");      // the family's light partner, until the buyer picks
+
+    const r = await app.request("/theme", { method: "POST", body: new URLSearchParams({ to: "pink-dark" }) }, env);
+    expect(r.headers.get("Set-Cookie") ?? "").toContain("theme=pink-dark");
+    const picked = await (await app.request("/", { headers: { Cookie: "theme=pink-dark" } }, env)).text();
+    expect(picked).toContain("--surface-base: #1c1218");
+    expect(picked).toContain('data-theme="pink-dark"');
+    expect(picked).not.toContain("prefers-color-scheme");
+    const refused = await app.request("/theme", { method: "POST", body: new URLSearchParams({ to: "beige-dark" }) }, env);
+    expect(refused.headers.get("Set-Cookie") ?? "").not.toContain("theme=");
+  });
+
+  it("remembers a signed-in buyer's theme without the cookie", async () => {
+    const themes = [
+      { key: "blue-dark", name: "Blue (dark)", base: "dark" as const, tokens: { "surface-base": "#121a26" } },
+      { key: "pink-dark", name: "Pink (dark)", base: "dark" as const, tokens: { "surface-base": "#1c1218" } },
+    ];
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone", theme: { ...push().store.theme, key: "blue-dark", themes } } }));
+    const s = await signedIn();
+    await app.request("/theme", { method: "POST", headers: { Cookie: s.cookie }, body: new URLSearchParams({ to: "pink-dark" }) }, env);
+    const back = await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();   // the session, no theme cookie
+    expect(back).toContain('data-theme="pink-dark"');
+    expect(await (await app.request("/", {}, env)).text()).toContain('data-theme="blue-dark"');  // a stranger's browser: the store's own
+  });
+
+  it("still offers an older app's dark and light pair", async () => {
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }));
+    const home = await (await app.request("/", {}, env)).text();
+    expect(home).toContain('<option value="dark" selected="">Dark</option>');
+    expect(home).toContain('<option value="light">Light</option>');
+  });
+
   it("refuses a form whose token is not the session's", async () => {
     const s = await signedIn();
     const r = await app.request("/orders", {

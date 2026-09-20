@@ -1,16 +1,14 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
 import { raw } from "hono/html";
 import type { Session } from "../env";
-import type { Theme } from "../protocol";
-import { baseStyle, themeStyle, type Variant } from "../theme";
+
+import { baseStyle, themeStyle, type ThemePick } from "../theme";
 
 export interface Flash { kind: "good" | "bad" | "info"; text: string }
 
 export interface LayoutProps {
   storeName: string;
-  theme: Theme;
-  variant: Variant;
-  explicit: boolean;
+  theme: ThemePick;
   session: Session | null;
   active: "catalogue" | "orders" | "none";
   flash?: Flash | null;
@@ -23,13 +21,13 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
   // bottom margin of 1em, which is why the header's buttons sat higher than the name.
   <>
     {raw("<!DOCTYPE html>")}
-  <html lang="en" data-theme={p.explicit ? p.variant : undefined}>
+  <html lang="en" data-theme={p.theme.explicit ? p.theme.chosen.key : undefined}>
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="robots" content="noindex" />
       <title>{p.storeName}</title>
-      <style dangerouslySetInnerHTML={{ __html: themeStyle(p.theme, p.variant, p.explicit) + baseStyle }} />
+      <style dangerouslySetInnerHTML={{ __html: themeStyle(p.theme) + baseStyle }} />
     </head>
     <body>
       <header class="bar">
@@ -40,10 +38,14 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
             {p.session && <a href="/orders" class={p.active === "orders" ? "active" : ""}>My orders</a>}
           </nav>
           <div class="who">
-            {p.theme.buyerMaySwitch && (
+            {/* The themes the store offers, as the app's own theme menu: a dropdown that applies
+                itself; without script the button beside it does. */}
+            {p.theme.options.length > 1 && (
               <form method="post" action="/theme">
-                <input type="hidden" name="to" value={p.variant === "dark" ? "light" : "dark"} />
-                <button class="link" type="submit">{p.variant === "dark" ? "Light" : "Dark"}</button>
+                <select name="to" aria-label="Theme" onchange="this.form.submit()">
+                  {p.theme.options.map((o) => <option value={o.key} selected={o.key === p.theme.chosen.key || undefined}>{o.name}</option>)}
+                </select>
+                <noscript><button class="link" type="submit">Apply</button></noscript>
               </form>
             )}
             {p.session ? (

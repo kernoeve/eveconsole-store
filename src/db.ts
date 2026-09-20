@@ -8,7 +8,7 @@
 import { randomToken } from "./crypto";
 import type { Catalogue, StoreInfo } from "./protocol";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 
 const steps: { version: number; sql: string[] }[] = [
@@ -71,6 +71,12 @@ const steps: { version: number; sql: string[] }[] = [
     sql: [`CREATE TABLE IF NOT EXISTS assets (
              kind TEXT PRIMARY KEY, content_type TEXT NOT NULL, sha256 TEXT NOT NULL,
              bytes BLOB NOT NULL, updated_at TEXT NOT NULL)`],
+  },
+  {
+    version: 4,
+    // What a buyer chose for themselves, by character, so it follows them between browsers.
+    sql: [`CREATE TABLE IF NOT EXISTS buyer_prefs (
+             character_id INTEGER PRIMARY KEY, theme TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)`],
   },
 ];
 
@@ -143,4 +149,17 @@ export const now = () => new Date().toISOString();
 export async function bannerHash(db: D1Database): Promise<string> {
   const row = await db.prepare(`SELECT sha256 FROM assets WHERE kind = 'banner'`).first<{ sha256: string }>();
   return row?.sha256 ?? "";
+}
+
+/** The theme a buyer picked for themselves, or null. */
+export async function buyerTheme(db: D1Database, characterId: number): Promise<string | null> {
+  const row = await db.prepare(`SELECT theme FROM buyer_prefs WHERE character_id = ?1`).bind(characterId).first<{ theme: string }>();
+  return row?.theme || null;
+}
+
+export async function saveBuyerTheme(db: D1Database, characterId: number, theme: string): Promise<void> {
+  await db.prepare(
+    `INSERT INTO buyer_prefs (character_id, theme, updated_at) VALUES (?1, ?2, ?3)
+     ON CONFLICT(character_id) DO UPDATE SET theme = excluded.theme, updated_at = excluded.updated_at`,
+  ).bind(characterId, theme, now()).run();
 }

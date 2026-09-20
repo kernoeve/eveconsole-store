@@ -71,6 +71,16 @@ export interface Theme {
   buyerMaySwitch: boolean;
   default: "dark" | "light";
   variants: Record<string, Record<string, string>>;
+  /** Every theme the buyer may pick from, the store's own first; absent from an older app,
+   * which pushes only the dark/light pair above. */
+  themes?: ThemeOption[];
+}
+
+export interface ThemeOption {
+  key: string;
+  name: string;
+  base: "dark" | "light";
+  tokens: Record<string, string>;
 }
 
 export interface Catalogue {

@@ -4,14 +4,14 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "./env";
 import { beginLogin, csrfOk, finishLogin, logout, safeNext, sessionMiddleware } from "./auth";
-import { bannerHash, ensureSchema, loadStore, type StoreState } from "./db";
+import { bannerHash, buyerTheme, ensureSchema, loadStore, saveBuyerTheme, type StoreState } from "./db";
 import { isAllowed } from "./policy";
 import { cancelOrder, cancelWebOrder, ordersFor, pendingFor, pendingUnits, placeOrder, waitingFor } from "./orders";
 import { allowanceFor, describeLimit, orderedByScope } from "./limits";
 
 import { handleBanner, handleSync, handleVersion } from "./sync";
 import { BANNER_PATH, SYNC_PATH, type Theme } from "./protocol";
-import { pickVariant } from "./theme";
+import { pickTheme, themeOptions } from "./theme";
 import { Layout, Message, type Flash } from "./views/layout";
 import { CataloguePage, OrdersPage } from "./views/pages";
 
@@ -48,9 +48,11 @@ app.use("*", sessionMiddleware);
 async function page(c: Ctx) {
   await ensureSchema(c.env.DB);
   const store = await loadStore(c.env.DB);
-  const theme: Theme = store?.info.theme ?? fallbackTheme;
-  const { variant, explicit } = pickVariant(theme, getCookie(c, "theme"));
-  return { store, theme, variant, explicit, session: c.get("session"), flash: takeFlash(c), siteVersion: c.env.SITE_VERSION };
+  // A signed-in buyer's saved pick comes before this browser's cookie, so it follows them.
+  const session = c.get("session");
+  const saved = session ? await buyerTheme(c.env.DB, session.characterId) : null;
+  const theme = pickTheme(store?.info.theme ?? fallbackTheme, saved ?? getCookie(c, "theme"));
+  return { store, theme, session, flash: takeFlash(c), siteVersion: c.env.SITE_VERSION };
 }
 
 // A one-shot message travels in a short-lived cookie, never in the URL: nobody can craft a
@@ -192,8 +194,12 @@ app.post("/theme", async (c) => {
   const to = String(form.get("to"));
   await ensureSchema(c.env.DB);
   const theme = (await loadStore(c.env.DB))?.info.theme ?? fallbackTheme;
-  if (theme.buyerMaySwitch && (to === "dark" || to === "light"))
+  if (themeOptions(theme).some((o) => o.key === to)) {
     setCookie(c, "theme", to, { path: "/", sameSite: "Lax", maxAge: 365 * 86_400, secure: isHttps(c) });
+    // Kept by character too, so the pick follows a signed-in buyer to any browser.
+    const session = c.get("session");
+    if (session) await saveBuyerTheme(c.env.DB, session.characterId, to);
+  }
   const referer = c.req.header("Referer");
   return c.redirect(safeNext(referer ? new URL(referer).pathname : "/"));
 });

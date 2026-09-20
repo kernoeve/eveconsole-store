@@ -52,12 +52,16 @@ in the next call.
     "mailUpdates": true,              // the owner also mails buyers as orders move (informational)
     "theme": {
       "key": "blue-dark",             // the app's theme key
-      "buyerMaySwitch": true,         // may a buyer flip to the paired light/dark variant
+      "buyerMaySwitch": true,         // for a site older than 0.1.9: may a buyer flip to the paired variant
       "default": "dark",              // which variant is the store's own: "dark" | "light"
       "variants": {
         "dark":  { "surface-base": "#121a26", "surface-panel": "#192434", "...": "..." },
         "light": { "surface-base": "#dfe6ee", "...": "..." }
-      }
+      },
+      "themes": [                     // every theme a buyer may pick, the store's own first; more than one = a dropdown
+        { "key": "blue-dark",  "name": "Blue (dark)",  "base": "dark",  "tokens": { "surface-base": "#121a26", "...": "..." } },
+        { "key": "pink-light", "name": "Pink (light)", "base": "light", "tokens": { "...": "..." } }
+      ]
     }
   },
   "catalogue": {
