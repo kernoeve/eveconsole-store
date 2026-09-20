@@ -226,6 +226,8 @@ describe("the buyer's pages", () => {
     expect(row?.state).toBe("cancelled");
     const after = await (await app.request("/orders", { headers: { Cookie: s.cookie } }, env)).text();
     expect(after).toContain("Withdrawn");
+    expect(after).toContain('id="cancel"');   // the confirmation the Cancel buttons open
+
   });
 
   it("asks about EVE mail only when the store has a mailbox, and carries the answer to the store", async () => {

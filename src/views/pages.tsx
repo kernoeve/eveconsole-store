@@ -181,6 +181,29 @@ const ConfirmDialog: FC<{ csrf: string; mailbox: boolean }> = (p) => (
 );
 
 
+/**
+ * The tail every confirmation dialog shares: from the click on its own button until the next
+ * page arrives it shows "busy" with the buttons disabled and Escape ignored, so a second click
+ * cannot act twice; Cancel closes it; coming back to the page resets it.
+ */
+const busyScript = `
+  var acting = dlg.querySelector('form');
+  var busy = false;
+  acting.addEventListener('submit', function (e) {
+    if (busy) { e.preventDefault(); return; }
+    busy = true;
+    acting.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    dlg.querySelector('.busy').hidden = false;
+  });
+  dlg.addEventListener('cancel', function (e) { if (busy) e.preventDefault(); });
+  dlg.querySelector('[data-close]').addEventListener('click', function () { dlg.close(); });
+  window.addEventListener('pageshow', function () {
+    busy = false;
+    acting.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+    dlg.querySelector('.busy').hidden = true;
+  });
+`;
+
 const confirmScript = `
 (function () {
   var dlg = document.getElementById('confirm');
@@ -203,24 +226,60 @@ const confirmScript = `
       dlg.showModal();
     });
   });
-  dlg.querySelector('[data-close]').addEventListener('click', function () { dlg.close(); });
-
-  var placing = dlg.querySelector('form');
-  var busy = false;
-  placing.addEventListener('submit', function (e) {
-    if (busy) { e.preventDefault(); return; }
-    busy = true;
-    placing.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-    dlg.querySelector('.busy').hidden = false;
-  });
-  dlg.addEventListener('cancel', function (e) { if (busy) e.preventDefault(); });
-  window.addEventListener('pageshow', function () {
-    busy = false;
-    placing.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
-    dlg.querySelector('.busy').hidden = true;
-  });
+${busyScript}
 })();
+`;
 
+/**
+ * Asked before an order is cancelled or a web order withdrawn: which order, its total and
+ * state, and a word about a contract already made out. The row's own form still posts on its
+ * own where the script does not run.
+ */
+const CancelDialog: FC<{ csrf: string }> = (p) => (
+  <dialog id="cancel" class="confirm">
+    <form method="post" action="">
+      <input type="hidden" name="_csrf" value={p.csrf} />
+      <h2>Cancel this order?</h2>
+      <div class="item">
+        <div>
+          <div data-f="what"></div>
+          <div class="group" data-f="ref"></div>
+        </div>
+      </div>
+      <table class="facts">
+        <tr><th>Total</th><td data-f="total"></td></tr>
+        <tr><th>State</th><td data-f="state"></td></tr>
+      </table>
+      <p class="note" data-f="contract" hidden>A contract is already made out for it. Cancelling tells the store to withdraw it; the contract itself stays until they remove it in game.</p>
+      <p class="note">The store hears of it at its next check-in, usually within a couple of minutes.</p>
+      <div class="actions">
+        <button type="button" class="link" data-close>Keep the order</button>
+        <button type="submit" class="bad">Cancel the order</button>
+      </div>
+      <div class="busy" hidden><span class="hourglass" aria-hidden="true">⌛</span> Cancelling… this takes a few seconds.</div>
+    </form>
+  </dialog>
+);
+
+const cancelScript = `
+(function () {
+  var dlg = document.getElementById('cancel');
+  if (!dlg || typeof dlg.showModal !== 'function') return;
+  var field = function (k) { return dlg.querySelector('[data-f=' + k + ']'); };
+  document.querySelectorAll('form.cancel').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      field('what').textContent = form.dataset.what;
+      field('ref').textContent = form.dataset.ref;
+      field('total').textContent = form.dataset.total;
+      field('state').textContent = form.dataset.state;
+      field('contract').hidden = form.dataset.contract !== '1';
+      dlg.querySelector('form').action = form.getAttribute('action');
+      dlg.showModal();
+    });
+  });
+${busyScript}
+})();
 `;
 
 // ── The buyer's orders ────────────────────────────────────────────────────
@@ -275,10 +334,13 @@ export const OrdersPage: FC<OrdersProps> = (p) => (
                   <td><span class={`state ${st.cls}`}>{st.text}</span></td>
                   <td class="right">
                     {(w.state === "submitted" || w.state === "review") && (
-                      <form method="post" action={`/web-orders/${w.id}/cancel`}>
+                      <form class="cancel" method="post" action={`/web-orders/${w.id}/cancel`}
+                            data-what={w.lines.map((l) => `${formatUnits(l.units)} × ${l.name}`).join(", ")}
+                            data-ref="Not yet confirmed by the store" data-total={formatIsk(w.total)} data-state={st.text} data-contract="0">
                         <input type="hidden" name="_csrf" value={p.session.csrf} />
                         <button class="bad" type="submit">Cancel</button>
                       </form>
+
                     )}
                   </td>
                 </tr>
@@ -314,10 +376,14 @@ export const OrdersPage: FC<OrdersProps> = (p) => (
                   <td class="optional dim">{o.channel === "web" ? "this site" : o.channel === "mail" ? "EVE mail" : "the store"}</td>
                   <td class="right">
                     {o.status === "pending" && (
-                      <form method="post" action={`/orders/${o.id}/cancel`}>
+                      <form class="cancel" method="post" action={`/orders/${o.id}/cancel`}
+                            data-what={`${formatUnits(o.units)} × ${o.typeName ?? `Type ${o.typeId}`}`}
+                            data-ref={`Order ${o.ref}`} data-total={formatIsk(o.totalPrice)} data-state={st.text}
+                            data-contract={o.contractId ? "1" : "0"}>
                         <input type="hidden" name="_csrf" value={p.session.csrf} />
                         <button class="bad" type="submit">Cancel</button>
                       </form>
+
                     )}
                   </td>
                 </tr>
@@ -331,5 +397,8 @@ export const OrdersPage: FC<OrdersProps> = (p) => (
         contract itself is theirs to remove in game.
       </p>
     </div>
+    <CancelDialog csrf={p.session.csrf} />
+    <script dangerouslySetInnerHTML={{ __html: cancelScript }} />
   </>
 );
+
