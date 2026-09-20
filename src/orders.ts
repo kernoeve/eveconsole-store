@@ -50,6 +50,15 @@ export async function waitingFor(db: D1Database, buyerId: number): Promise<WebOr
   return rows.results.map(toWebOrder);
 }
 
+/** The buyer's web orders the store has not answered yet, whatever their age: what a limit counts before the store confirms. */
+export async function pendingFor(db: D1Database, buyerId: number): Promise<WebOrder[]> {
+  const rows = await db.prepare(
+    `SELECT id, buyer_id, lines_json, total, state, reason, app_ref, created_at FROM web_orders
+      WHERE buyer_id = ?1 AND state IN ('submitted', 'review')`,
+  ).bind(buyerId).all<Parameters<typeof toWebOrder>[0]>();
+  return rows.results.map(toWebOrder);
+}
+
 /** Every order in the buyer's name as the app last pushed it — theirs, or their corporation's. */
 export async function ordersFor(db: D1Database, s: Session): Promise<OrderRow[]> {
   const rows = await db.prepare(

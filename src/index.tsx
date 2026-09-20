@@ -6,7 +6,9 @@ import type { AppEnv } from "./env";
 import { beginLogin, csrfOk, finishLogin, logout, safeNext, sessionMiddleware } from "./auth";
 import { ensureSchema, loadStore, type StoreState } from "./db";
 import { isAllowed } from "./policy";
-import { cancelOrder, cancelWebOrder, ordersFor, pendingUnits, placeOrder, waitingFor } from "./orders";
+import { cancelOrder, cancelWebOrder, ordersFor, pendingFor, pendingUnits, placeOrder, waitingFor } from "./orders";
+import { allowanceFor, describeLimit, orderedByScope } from "./limits";
+
 import { handleSync, handleVersion } from "./sync";
 import { SYNC_PATH, type Theme } from "./protocol";
 import { pickVariant } from "./theme";
@@ -81,9 +83,16 @@ app.get("/", async (c) => {
         : <Message title={store.info.name} text="This shop serves a list of buyers. Sign in with EVE to see whether you are on it." link={{ href: "/auth/login", label: "Sign in with EVE" }} />}
     </Layout>);
 
+  // With a purchase limit, what this buyer has taken already decides what the list offers them.
+  const limit = store.info.limit ?? null;
+  const taken = limit && session && allowed
+    ? orderedByScope(limit, store.catalogue, await ordersFor(c.env.DB, session), await pendingFor(c.env.DB, session.characterId), session.characterId)
+    : null;
   return c.html(<Layout storeName={store.info.name} active="catalogue" asOf={asOf(store)} {...common}>
-    <CataloguePage store={store.info} catalogue={store.catalogue} pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed} />
+    <CataloguePage store={store.info} catalogue={store.catalogue} pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed}
+                   limit={limit} taken={taken} />
   </Layout>);
+
 });
 
 app.get("/orders", async (c) => {
@@ -108,12 +117,31 @@ app.post("/orders", async (c) => {
   if (!store?.catalogue) { flash(c, "bad", "The price list is not available."); return c.redirect("/"); }
   if (!(await isAllowed(c.env.DB, store.info, session))) return c.redirect("/");
 
+  const typeId = Number(form.get("typeId"));
+  const units  = Number(form.get("units"));
+
+  // The store's purchase limit, refused here as it would be refused by the app: the list greys
+  // out what is over, but a form can be sent regardless.
+  if (store.info.limit) {
+    const limit = store.info.limit;
+    const taken = orderedByScope(limit, store.catalogue, await ordersFor(c.env.DB, session), await pendingFor(c.env.DB, session.characterId), session.characterId);
+    const item  = store.catalogue.sections.flatMap((x) => x.items).find((i) => i.typeId === typeId);
+    const a     = allowanceFor(limit, taken, typeId, item?.groupId);
+    if (units > a.remaining) {
+      flash(c, "bad", a.remaining === 0
+        ? `You have reached this store's limit for that item: ${describeLimit(limit)}.`
+        : `This store limits each buyer to ${describeLimit(limit)}; you may order ${a.remaining.toLocaleString("en-US")} more, not ${units.toLocaleString("en-US")}.`);
+      return c.redirect("/");
+    }
+  }
+
   // The mail question is only asked when the store has a mailbox; a form that never asked it
   // (no script, or no mailbox) means the default, which is yes.
   const asked = form.get("mailUpdatesAsked") != null;
   const mailUpdates = asked ? form.get("mailUpdates") != null : true;
   const r = await placeOrder(c.env.DB, session, store.catalogue, store.catalogueHash,
-    Number(form.get("typeId")), Number(form.get("units")), String(form.get("note") ?? ""), mailUpdates);
+    typeId, units, String(form.get("note") ?? ""), mailUpdates);
+
 
   if (r.ok) {
     flash(c, "good", "Order sent to the store. It is confirmed once the store's system has taken it, usually within a couple of minutes.");

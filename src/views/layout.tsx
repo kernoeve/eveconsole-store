@@ -1,4 +1,5 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
+import { raw } from "hono/html";
 import type { Session } from "../env";
 import type { Theme } from "../protocol";
 import { baseStyle, themeStyle, type Variant } from "../theme";
@@ -18,6 +19,10 @@ export interface LayoutProps {
 }
 
 export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
+  // ⚠️ The doctype puts the browser in standards mode. Without it Chrome gives every <form> a
+  // bottom margin of 1em, which is why the header's buttons sat higher than the name.
+  <>
+    {raw("<!DOCTYPE html>")}
   <html lang="en" data-theme={p.explicit ? p.variant : undefined}>
     <head>
       <meta charset="utf-8" />
@@ -65,6 +70,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
       </main>
     </body>
   </html>
+  </>
 );
 
 /** A page that is only a message: a private shop, a site not set up yet, an error. */

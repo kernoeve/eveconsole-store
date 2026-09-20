@@ -163,6 +163,13 @@ overlays carry alpha first, as Avalonia writes it).
   Anything else is reported back in `webOrders` as `review` or `rejected`, with the reason.
 - Acknowledges events by sending the highest `seq` it has applied as `cursor`.
 - Never sends the secret, and never trusts a price from the site without checking it.
+- Pushes only this store's orders that have a buyer, whatever doorway placed them; orders of
+  other stores and orders entered by hand with no store are not the site's to show.
+- Pushes the store's purchase limit when it has one (`store.limit`: `units`, `scope` of
+  `type`, `group` or `store`, `period` of `days`, `months`, `years` or `all`, `count`) and the
+  SDE group of every item and order row (`groupId`), so the site can count it. The site greys
+  out and refuses what is over; the app holds anything over for review when it books.
+
 
 **The site**
 

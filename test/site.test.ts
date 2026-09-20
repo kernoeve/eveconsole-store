@@ -8,6 +8,8 @@ import { ensureSchema } from "../src/db";
 import { placeOrder, cancelOrder } from "../src/orders";
 import { isAllowed } from "../src/policy";
 import type { Session } from "../src/env";
+import { periodStart } from "../src/limits";
+
 
 const SECRET = "test-secret-do-not-use";
 const enc = new TextEncoder();
@@ -45,7 +47,18 @@ function push(over: Partial<SyncRequest> = {}): SyncRequest {
 const buyer: Session = { id: "s1", characterId: 2118000001, name: "Some Buyer", corporationId: 98000001, allianceId: null, csrf: "x" };
 const stranger: Session = { id: "s2", characterId: 2118000002, name: "A Stranger", corporationId: 98000002, allianceId: null, csrf: "y" };
 
+describe("the limit's period", () => {
+  it("steps the calendar for months and years, and has no start for all time", () => {
+    const now = new Date("2026-03-31T12:00:00Z");
+    expect(periodStart({ units: 1, scope: "type", period: "days", count: 30 }, now)?.toISOString()).toBe("2026-03-01T12:00:00.000Z");
+    expect(periodStart({ units: 1, scope: "type", period: "months", count: 1 }, now)?.toISOString()).toBe("2026-03-03T12:00:00.000Z");
+    expect(periodStart({ units: 1, scope: "type", period: "years", count: 2 }, now)?.toISOString()).toBe("2024-03-31T12:00:00.000Z");
+    expect(periodStart({ units: 1, scope: "type", period: "all", count: 1 }, now)).toBeNull();
+  });
+});
+
 describe("signing", () => {
+
   it("matches the vector EVE Console's signer produces (openssl)", async () => {
     expect(await signSync(SECRET, "1700000000", enc.encode('{"a":1}')))
       .toBe("v1=5f8bf2fc50ad4097f6e84a0c2765157b0606bcea123e2aa72071f4986db11641");
@@ -250,6 +263,35 @@ describe("the buyer's pages", () => {
     await sync(push({ store: { ...push().store, senderPolicy: "anyone", characterName: "Some Pilot", mailUpdates: true } }));
     const withBox = await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();
     expect(withBox).toContain('name="mailUpdatesAsked"');
+  });
+
+  it("holds a buyer to the store's purchase limit", async () => {
+    const limited = { ...push().store, senderPolicy: "anyone" as const, limit: { units: 1, scope: "type" as const, period: "all" as const, count: 1 } };
+    const wider = { ...catalogue, sections: [{ name: "Hulls", items: [
+      ...catalogue.sections[0].items,
+      { typeId: 2003, name: "Gizmo", typeName: "Gizmo", unitPrice: 5, inStock: 9, inBuild: 0, reserved: 0 },
+    ] }] };
+    await sync(push({ store: limited, catalogue: wider, orders: [
+      { id: 77, ref: "FIRST1", buyerId: buyer.characterId, buyerType: "character", typeId: 2001, units: 1, totalPrice: 1_100_000, status: "completed", createdAt: "2026-01-01T00:00:00Z" },
+    ] }));
+    const s = await signedIn();
+    const home = await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(home).toContain("limits each buyer to 1 unit of each item ever");
+    expect(home).toContain("Limit reached");                       // Widget: one already, none left
+    expect(home).toContain('name="units" class="fixed"');          // Gizmo: still open, box fixed at 1
+    expect(home).toContain("You have not ordered any yet");        // said in the dialog for Gizmo
+
+    const over = await app.request("/orders", { method: "POST", headers: { Cookie: s.cookie }, body: new URLSearchParams({ _csrf: s.csrf, typeId: "2001", units: "1" }) }, env);
+    expect(over.status).toBe(302);
+    expect(over.headers.get("Location")).toBe("/");                 // refused, back to the list
+    expect(over.headers.get("Set-Cookie") ?? "").toContain("flash=");
+
+    // The whole store, a thousand units in thirty days: everything open, boxes capped at what is left.
+    await sync(push({ store: { ...limited, limit: { units: 1000, scope: "store", period: "days", count: 30 } }, catalogue: wider }));
+    const wide = await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(wide).not.toContain("Limit reached");
+    expect(wide).toMatch(/name="units" min="1" max="\d+"/);
+    expect(wide).toContain("1,000 units from this store per 30 days");
   });
 
   it("refuses a form whose token is not the session's", async () => {

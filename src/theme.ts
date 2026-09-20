@@ -46,6 +46,7 @@ export function themeStyle(theme: Theme, variant: Variant, explicit: boolean): s
 
 export const baseStyle = `
 *, *::before, *::after { box-sizing: border-box; }
+form { margin: 0; }
 html { font-size: 14px; }
 body {
   margin: 0; background: var(--surface-base); color: var(--text-primary);
@@ -83,6 +84,11 @@ table.grid td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle);
 table.grid tr:hover td { background: var(--surface-hover); }
 table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.grid tr.section td { background: var(--surface-panel-alt); color: var(--text-bright); font-weight: 600; font-size: 12px; }
+table.grid tr.ineligible td { opacity: .4; }
+table.grid tr.ineligible:hover td { background: transparent; }
+input[type=number].fixed { color: var(--text-dim); background: var(--surface-panel-alt); }
+dialog.confirm .limit { color: var(--warn); }
+
 .item { display: flex; align-items: center; gap: 8px; }
 .item img { width: 24px; height: 24px; border-radius: 3px; background: var(--surface-input); flex: none; }
 .item .group { color: var(--text-faint); font-size: 10px; }

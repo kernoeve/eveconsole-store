@@ -26,8 +26,19 @@ export interface StoreInfo {
   senderPolicy: "anyone" | "list";
   allowed: Allowed[];
   mailUpdates?: boolean;
+  /** The store's per-buyer purchase limit, when it has one. */
+  limit?: Limit | null;
   theme: Theme;
 }
+
+/** So many units of each item type, each item group, or anything in the store, within a rolling period or ever. */
+export interface Limit {
+  units: number;
+  scope: "type" | "group" | "store";
+  period: "days" | "months" | "years" | "all";
+  count: number;
+}
+
 
 export interface Allowed {
   id: number;
@@ -69,7 +80,9 @@ export interface CatalogueItem {
   name: string;
   typeName: string;
   groupName?: string;
+  groupId?: number;
   unitPrice?: number | null;
+
   inStock: number;
   inBuild: number;
   reserved: number;
@@ -88,7 +101,10 @@ export interface OrderRow {
   contractToName?: string;
   typeId: number;
   typeName?: string;
+  groupId?: number;
+  groupName?: string;
   units: number;
+
   totalPrice: number;
   status: "pending" | "completed" | "canceled" | string;
   fulfilment?: "" | "stock" | "job" | "contract" | string;

@@ -1,7 +1,9 @@
 import type { FC } from "hono/jsx";
 import type { Session } from "../env";
-import type { Catalogue, CatalogueItem, OrderRow, StoreInfo } from "../protocol";
+import type { Catalogue, CatalogueItem, Limit, OrderRow, StoreInfo } from "../protocol";
 import type { WebOrder } from "../orders";
+import { allowanceFor, allowanceWords, describeLimit } from "../limits";
+
 
 const isk = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 export const formatIsk = (n: number) => `${isk.format(n)} ISK`;
@@ -31,7 +33,11 @@ export interface CatalogueProps {
   pending: Map<number, number>;
   session: Session | null;
   allowed: boolean;
+  /** The store's purchase limit, and what this buyer has taken against it (only when signed in and allowed). */
+  limit?: Limit | null;
+  taken?: Map<string, number> | null;
 }
+
 
 function availableNow(i: CatalogueItem, pending: Map<number, number>): number {
   return Math.max(0, i.inStock - i.reserved - (pending.get(i.typeId) ?? 0));
@@ -68,6 +74,12 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
       {p.session && !p.allowed && (
         <div class="flash bad">This shop serves a list of buyers, and {p.session.name} is not on it.</div>
       )}
+      {p.limit && (
+        <p class="note" style="margin-top:12px">
+          This store limits each buyer to {describeLimit(p.limit)}. What you may no longer order is greyed out.
+        </p>
+      )}
+
       <div class="panel" style="padding:0 0 8px">
         <table class="grid">
           <thead>
@@ -85,39 +97,56 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
             {c.sections.map((s) => (
               <>
                 <tr class="section">
-                  <td colspan={7}>{s.prefix ? `${s.prefix} ` : ""}{s.name}</td>
+                  <td colspan={7}>{s.name}</td>
+
                 </tr>
                 {s.items.map((i) => {
                   const available = availableNow(i, p.pending);
                   const st = stateOf(i, available);
+                  // Against the store's limit, when it has one and the buyer is known.
+                  const a = p.limit && p.taken ? allowanceFor(p.limit, p.taken, i.typeId, i.groupId) : null;
+                  const blocked = a !== null && a.remaining === 0 && i.unitPrice != null;
+
                   const rowStyle = c.colourByState
                     ? `color:${available > 0 ? c.colourInStock : i.inBuild > 0 ? c.colourInBuild : c.colourNone}`
                     : i.colour ? `color:${i.colour}` : s.rowColour ? `color:${s.rowColour}` : undefined;
                   return (
-                    <tr style={rowStyle}>
+                    <tr style={rowStyle} class={blocked ? "ineligible" : undefined}>
                       <td><Item typeId={i.typeId} name={i.name} group={i.groupName} /></td>
                       <td class="num">{i.unitPrice != null ? formatIsk(i.unitPrice) : <span class="dim">not for sale</span>}</td>
                       <td>
-                        {st.text ? <span class={`state ${st.cls}`}>{st.text}</span> : null}
-                        {c.showCompletionDate && i.earliestJobEnd && available === 0 && i.inBuild > 0 && (
-                          <span class="dim"> · earliest {i.earliestJobEnd.slice(0, 10)}</span>
+                        {blocked ? (
+                          <span class="state muted">Limit reached</span>
+                        ) : (
+                          <>
+                            {st.text ? <span class={`state ${st.cls}`}>{st.text}</span> : null}
+                            {c.showCompletionDate && i.earliestJobEnd && available === 0 && i.inBuild > 0 && (
+                              <span class="dim"> · earliest {i.earliestJobEnd.slice(0, 10)}</span>
+                            )}
+                          </>
                         )}
                       </td>
+
                       {showColumns.stock && <td class="num optional">{formatUnits(i.inStock)}</td>}
                       {showColumns.build && <td class="num optional">{formatUnits(i.inBuild)}</td>}
                       {showColumns.reserved && <td class="num optional">{formatUnits(i.reserved)}</td>}
                       {canOrder && (
                         <td>
-                          {i.unitPrice != null ? (
+                          {i.unitPrice != null && !blocked ? (
                             <form class="order" method="post" action="/orders"
-                                  data-name={i.name} data-price={String(i.unitPrice)} data-icon={iconUrl(i.typeId)}>
-
+                                  data-name={i.name} data-price={String(i.unitPrice)} data-icon={iconUrl(i.typeId)}
+                                  data-limit={a ? allowanceWords(p.limit!, a) : undefined}>
                               <input type="hidden" name="_csrf" value={p.session!.csrf} />
                               <input type="hidden" name="typeId" value={String(i.typeId)} />
-                              <input type="number" name="units" min="1" max="10000" value="1" required />
+                              {/* One unit each and the box is fixed at 1 (read-only, so it still posts); a
+                                  larger limit caps the box at what the buyer has left. */}
+                              {p.limit && p.limit.units === 1
+                                ? <input type="number" name="units" class="fixed" min="1" max="1" value="1" readonly required />
+                                : <input type="number" name="units" min="1" max={String(a ? Math.min(10_000, a.remaining) : 10_000)} value="1" required />}
                               <button type="submit">Order</button>
                             </form>
                           ) : null}
+
                         </td>
                       )}
                     </tr>
@@ -161,6 +190,8 @@ const ConfirmDialog: FC<{ csrf: string; mailbox: boolean }> = (p) => (
         <tr><th>Price each</th><td data-f="price"></td></tr>
         <tr><th>Total</th><td class="total" data-f="total"></td></tr>
       </table>
+      <p class="note limit" data-f="limit" hidden></p>
+
       {p.mailbox && (
         <label class="check">
           <input type="hidden" name="mailUpdatesAsked" value="1" />
@@ -221,7 +252,10 @@ const confirmScript = `
       field('units').textContent = fmt.format(units);
       field('price').textContent = fmt.format(price) + ' ISK';
       field('total').textContent = fmt.format(units * price) + ' ISK';
+      field('limit').textContent = form.dataset.limit || '';
+      field('limit').hidden = !form.dataset.limit;
       dlg.querySelector('input[name=typeId]').value = form.querySelector('input[name=typeId]').value;
+
       dlg.querySelector('input[name=units]').value = String(units);
       dlg.showModal();
     });
@@ -373,7 +407,8 @@ export const OrdersPage: FC<OrdersProps> = (p) => (
                   <td class="num">{formatUnits(o.units)}</td>
                   <td class="num">{formatIsk(o.totalPrice)}</td>
                   <td><span class={`state ${st.cls}`}>{st.text}</span></td>
-                  <td class="optional dim">{o.channel === "web" ? "this site" : o.channel === "mail" ? "EVE mail" : "the store"}</td>
+                  <td class="optional dim">{o.channel === "web" ? "website" : o.channel === "mail" ? "EVE mail" : "the store"}</td>
+
                   <td class="right">
                     {o.status === "pending" && (
                       <form class="cancel" method="post" action={`/orders/${o.id}/cancel`}
