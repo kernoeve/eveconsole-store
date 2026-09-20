@@ -47,8 +47,9 @@ function stateOf(i: CatalogueItem, available: number): { cls: string; text: stri
 export const CataloguePage: FC<CatalogueProps> = (p) => {
   const c = p.catalogue;
   const canOrder = !!p.session && p.allowed;
-  // The mail question is only worth asking when there is a mailbox to write from.
-  const mailbox  = !!(p.store.characterName && p.store.mailUpdates !== false);
+  // The mail question is only worth asking when the store has a mailbox and writes from it.
+  const mailbox  = p.store.mailUpdates === true;
+
 
   const showColumns = { stock: c.showInStock, build: c.showInBuild, reserved: c.showReserved };
   return (
@@ -58,12 +59,9 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
           {p.store.blurb.split(/\n\s*\n/).map((para) => <p>{para}</p>)}
         </div>
       )}
-      {(p.store.characterName || p.store.pickup) && (
-        <p class="note" style="margin-top:12px">
-          {p.store.characterName ? `Contracts are issued by ${p.store.characterName}. ` : ""}
-          {p.store.pickup ? `Pickup: ${p.store.pickup}.` : ""}
-        </p>
-      )}
+      {/* Nothing about who issues contracts or where to collect is guessed: the owner's own
+          words above are the only place such things are said. */}
+
       {!p.session && (
         <div class="flash info">Sign in with EVE to place an order. Prices are as listed at the moment you order.</div>
       )}
