@@ -35,8 +35,10 @@ The store's Config tab can deploy and update the site for you through Cloudflare
 1. Make an API token (the app links to the page): the "Edit Cloudflare Workers" template with
    "D1: Edit" added. Paste it into the app and press Save token; it stays on that machine only,
    encrypted for your account.
-2. Pick the account if the token reaches more than one, and a worker name; the site's address
-   is that name on your account's workers.dev, which the app chooses if the account has none yet.
+2. Pick the account if the token reaches more than one, and a worker name. The first deploy asks
+   where the site should live: the free address, that name on your account's workers.dev (chosen
+   for you if the account has none yet), or a domain of your own that is already on the account,
+   which Cloudflare then points at the site with a record and certificate of its own.
 3. Press Deploy or update site. The app creates the database, uploads the newest release, sets
    the secrets, switches on the address and puts it on the store. Register the EVE application
    against the callback it now shows and enter the keys: they reach the site as soon as they are
