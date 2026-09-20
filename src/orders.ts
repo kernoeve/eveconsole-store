@@ -62,10 +62,15 @@ export async function ordersFor(db: D1Database, s: Session): Promise<OrderRow[]>
     .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 }
 
-async function raise(db: D1Database, ev: Omit<SiteEvent, "seq">): Promise<void> {
-  await db.prepare(`INSERT INTO events (kind, json, created_at) VALUES (?1, ?2, ?3)`)
-    .bind(ev.kind, JSON.stringify(ev), now()).run();
+function eventStatement(db: D1Database, ev: Omit<SiteEvent, "seq">): D1PreparedStatement {
+  return db.prepare(`INSERT INTO events (kind, json, created_at) VALUES (?1, ?2, ?3)`)
+    .bind(ev.kind, JSON.stringify(ev), now());
 }
+
+async function raise(db: D1Database, ev: Omit<SiteEvent, "seq">): Promise<void> {
+  await eventStatement(db, ev).run();
+}
+
 
 function buyerOf(s: Session): SiteEvent["buyer"] {
   return { id: s.characterId, name: s.name, corporationId: s.corporationId, allianceId: s.allianceId };
@@ -91,21 +96,22 @@ export async function placeOrder(
   const line: WebOrderLine = { typeId, name: item.name, units, unitPrice: item.unitPrice };
   const id = newId();
   const ts = now();
-  await db.prepare(
-    `INSERT INTO web_orders (id, buyer_id, buyer_name, corp_id, alliance_id, lines_json, contract_to_json, note,
-                             catalogue_hash, total, state, reason, app_ref, created_at, updated_at, mail_updates)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8, ?9, 'submitted', '', '', ?10, ?10, ?11)`,
-  ).bind(id, s.characterId, s.name, s.corporationId, s.allianceId, JSON.stringify([line]),
-         note.slice(0, 500), catalogueHash, line.units * line.unitPrice, ts, mailUpdates ? 1 : 0).run();
-
-
-  await raise(db, {
-    kind: "order", at: ts, webOrderId: id, buyer: buyerOf(s),
-    lines: [{ typeId, units, unitPrice: item.unitPrice }],
-    contractTo: null, note: note.slice(0, 500), catalogueHash, mailUpdates,
-
-  });
+  // One round trip for the order and its event: the buyer is waiting on this.
+  await db.batch([
+    db.prepare(
+      `INSERT INTO web_orders (id, buyer_id, buyer_name, corp_id, alliance_id, lines_json, contract_to_json, note,
+                               catalogue_hash, total, state, reason, app_ref, created_at, updated_at, mail_updates)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8, ?9, 'submitted', '', '', ?10, ?10, ?11)`,
+    ).bind(id, s.characterId, s.name, s.corporationId, s.allianceId, JSON.stringify([line]),
+           note.slice(0, 500), catalogueHash, line.units * line.unitPrice, ts, mailUpdates ? 1 : 0),
+    eventStatement(db, {
+      kind: "order", at: ts, webOrderId: id, buyer: buyerOf(s),
+      lines: [{ typeId, units, unitPrice: item.unitPrice }],
+      contractTo: null, note: note.slice(0, 500), catalogueHash, mailUpdates,
+    }),
+  ]);
   return { ok: true, id };
+
 }
 
 /** Withdraws a web order the app has not booked yet. */

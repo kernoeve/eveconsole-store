@@ -185,8 +185,11 @@ app.post("/auth/logout", async (c) => {
 
 app.onError((err, c) => {
   console.error(err);
+  // The app shows the reason on its Stores screen; a buyer gets a plain page.
+  if (c.req.path.startsWith("/api/")) return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
   return c.text("Something went wrong on the site. The store's owner can see why in Cloudflare's logs.", 500);
 });
+
 
 function asOf(store: StoreState | null): string | null {
   const t = store?.catalogue?.asOf ?? store?.pushedAt;

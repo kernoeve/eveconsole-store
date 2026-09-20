@@ -145,6 +145,16 @@ dialog.confirm label.check { display: flex; gap: 8px; align-items: center; font-
 dialog.confirm .note { margin: 10px 0 0; }
 dialog.confirm .actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin-top: 14px; }
 dialog.confirm button.primary { padding: 6px 16px; }
+dialog.confirm { position: relative; }
+dialog.confirm .busy {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--surface-panel); border-radius: 6px; font-size: 13px; color: var(--text-bright);
+}
+dialog.confirm .busy[hidden] { display: none; }
+dialog.confirm .hourglass { font-size: 20px; display: inline-block; animation: turn 2s ease-in-out infinite; }
+@keyframes turn { 0%, 40% { transform: rotate(0); } 60%, 100% { transform: rotate(180deg); } }
+@media (prefers-reduced-motion: reduce) { dialog.confirm .hourglass { animation: none; } }
+
 @media (prefers-reduced-motion: no-preference) {
   table.grid tr td { transition: background .12s ease; }
 }

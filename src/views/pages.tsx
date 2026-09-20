@@ -173,9 +173,13 @@ const ConfirmDialog: FC<{ csrf: string; mailbox: boolean }> = (p) => (
         <button type="button" class="link" data-close>Cancel</button>
         <button type="submit" class="primary">Place order</button>
       </div>
+      {/* Shown from the click until the next page arrives, which takes a few seconds; the
+          buttons are disabled meanwhile so a second click cannot place a second order. */}
+      <div class="busy" hidden><span class="hourglass" aria-hidden="true">⌛</span> Placing your order… this takes a few seconds.</div>
     </form>
   </dialog>
 );
+
 
 const confirmScript = `
 (function () {
@@ -200,7 +204,23 @@ const confirmScript = `
     });
   });
   dlg.querySelector('[data-close]').addEventListener('click', function () { dlg.close(); });
+
+  var placing = dlg.querySelector('form');
+  var busy = false;
+  placing.addEventListener('submit', function (e) {
+    if (busy) { e.preventDefault(); return; }
+    busy = true;
+    placing.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    dlg.querySelector('.busy').hidden = false;
+  });
+  dlg.addEventListener('cancel', function (e) { if (busy) e.preventDefault(); });
+  window.addEventListener('pageshow', function () {
+    busy = false;
+    placing.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+    dlg.querySelector('.busy').hidden = true;
+  });
 })();
+
 `;
 
 // ── The buyer's orders ────────────────────────────────────────────────────

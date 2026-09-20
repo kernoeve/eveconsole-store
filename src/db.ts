@@ -82,7 +82,15 @@ export function ensureSchema(db: D1Database): Promise<void> {
 
     for (const step of steps) {
       if (step.version <= current) continue;
-      for (const sql of step.sql) await db.prepare(sql).run();
+      for (const sql of step.sql) {
+        try { await db.prepare(sql).run(); }
+        catch (e) {
+          // ⚠️ Another isolate may have run this step a moment ago: the first requests after a
+          // deploy race here, and a column that is already there is the step done, not a failure.
+          if (!/duplicate column name/i.test(String((e as Error)?.message ?? e))) throw e;
+        }
+      }
+
       await db.prepare(`INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
                         ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(String(step.version)).run();
     }
