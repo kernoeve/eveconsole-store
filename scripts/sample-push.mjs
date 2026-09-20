@@ -78,7 +78,15 @@ const request = {
     senderPolicy: "anyone",
     allowed: [],
     mailUpdates: false,
-    theme: { key: "dark", buyerMaySwitch: true, default: "dark", variants: { dark, light } },
+    theme: {
+      key: "dark", buyerMaySwitch: true, default: "dark", variants: { dark, light },
+      // What a store offers its buyers; the site shows these as a dropdown.
+      themes: [
+        { key: "dark", name: "Dark", base: "dark", tokens: dark },
+        { key: "light", name: "Light", base: "light", tokens: light },
+        { key: "blue-dark", name: "Blue (dark)", base: "dark", tokens: { ...dark, "surface-base": "#121a26", "surface-panel": "#192434", "surface-panel-alt": "#1d2a3d", "surface-header": "#22304a", "surface-raised": "#2a3a55" } },
+      ],
+    },
   },
   catalogue: {
     hash: "sample-" + new Date().toISOString().slice(0, 13),
