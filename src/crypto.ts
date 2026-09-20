@@ -24,6 +24,14 @@ export function base64urlDecode(s: string): Uint8Array {
   return out;
 }
 
+/** Standard base64 (what .NET writes for a byte array), decoded; throws on anything else. */
+export function base64Decode(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 export async function sha256Hex(data: string | Uint8Array): Promise<string> {
   const bytes = typeof data === "string" ? enc.encode(data) : data;
   return bytesToHex(await crypto.subtle.digest("SHA-256", bytes));

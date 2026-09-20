@@ -3,11 +3,13 @@
 //
 //   node scripts/sample-push.mjs                  → http://localhost:8787
 //   node scripts/sample-push.mjs https://my-shop.example.workers.dev
+//   BANNER=some.png node scripts/sample-push.mjs  → the same, with a banner across the top
 //
 // The secret comes from SITE_SECRET, else STORE_SYNC_SECRET in .dev.vars. CURSOR and
-// GENERATION may be set to see how the site answers a second call.
+// GENERATION may be set to see how the site answers a second call. Without BANNER the push
+// says the store has no banner, which takes down any the site holds.
 
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -52,6 +54,14 @@ const inDays = (d) => new Date(Date.now() + d * 86_400_000).toISOString();
 const item = (typeId, name, groupName, unitPrice, inStock = 0, inBuild = 0, reserved = 0, earliestJobEnd = null) =>
   ({ typeId, name, typeName: name, groupName, unitPrice, inStock, inBuild, reserved, earliestJobEnd });
 
+// The banner, the way the app sends one: named by hash in the push, bytes on their own call.
+const bannerFile = process.env.BANNER;
+const bannerBytes = bannerFile ? readFileSync(bannerFile) : null;
+const banner = bannerBytes
+  ? { sha256: createHash("sha256").update(bannerBytes).digest("hex"),
+      contentType: { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" }[bannerFile.split(".").pop().toLowerCase()] ?? "image/png" }
+  : null;
+
 const request = {
   protocol: 1,
   appVersion: "sample-push",
@@ -59,7 +69,10 @@ const request = {
   generation: process.env.GENERATION ?? "",
   store: {
     name: "Sample Shop",
-    blurb: "Hulls and minerals built to order in Jita. Contracts go out within a day of an order being confirmed; anything not in stock is built first and the price list says how long that takes.\n\nPrices are as listed at the moment you order.",
+    // HTML, as the site takes it; plain text with blank lines between paragraphs works too.
+    blurb: "<p>Hulls and minerals built to order in <b>Jita</b>. Contracts go out within a day of an order being confirmed; anything not in stock is built first and the price list says how long that takes.</p>"
+         + "<ul><li>Prices are as listed at the moment you order.</li><li>Not on the list? Ask in the <a href=\"https://example.com/\">alliance channel</a>.</li></ul>",
+    banner,
     characterName: "Some Pilot",
     pickup: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
     senderPolicy: "anyone",
@@ -105,12 +118,22 @@ const request = {
   webOrders: [],
 };
 
-const body = JSON.stringify(request);
-const ts = String(Math.floor(Date.now() / 1000));
-const signature = "v1=" + createHmac("sha256", secret).update(ts + "\n" + body).digest("hex");
-const r = await fetch(site + "/api/sync", {
-  method: "POST",
-  headers: { "Content-Type": "application/json", "X-EveConsole-Timestamp": ts, "X-EveConsole-Signature": signature },
-  body,
-});
-console.log(r.status, JSON.stringify(await r.json(), null, 2));
+async function signedCall(path, method, payload) {
+  const body = JSON.stringify(payload);
+  const ts = String(Math.floor(Date.now() / 1000));
+  const signature = "v1=" + createHmac("sha256", secret).update(ts + "\n" + body).digest("hex");
+  return fetch(site + path, {
+    method,
+    headers: { "Content-Type": "application/json", "X-EveConsole-Timestamp": ts, "X-EveConsole-Signature": signature },
+    body,
+  });
+}
+
+const r = await signedCall("/api/sync", "POST", request);
+const reply = await r.json();
+console.log(r.status, JSON.stringify(reply, null, 2));
+
+if (banner && reply.bannerSha256 !== banner.sha256) {
+  const b = await signedCall("/api/sync/banner", "PUT", { ...banner, data: bannerBytes.toString("base64") });
+  console.log("banner", b.status, await b.text());
+}

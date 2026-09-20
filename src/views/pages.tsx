@@ -3,6 +3,8 @@ import type { Session } from "../env";
 import type { Catalogue, CatalogueItem, Limit, OrderRow, StoreInfo } from "../protocol";
 import type { WebOrder } from "../orders";
 import { allowanceFor, allowanceWords, describeLimit } from "../limits";
+import { raw } from "hono/html";
+import { renderBlurb } from "../markup";
 
 
 const isk = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -36,6 +38,8 @@ export interface CatalogueProps {
   /** The store's purchase limit, and what this buyer has taken against it (only when signed in and allowed). */
   limit?: Limit | null;
   taken?: Map<string, number> | null;
+  /** The hash of the banner the site holds; "" or absent for none. */
+  banner?: string;
 }
 
 
@@ -50,6 +54,14 @@ function stateOf(i: CatalogueItem, available: number): { cls: string; text: stri
   return { cls: "muted", text: "Built to order" };
 }
 
+/** The owner's words, as HTML. With block tags the owner has done the layout; without them a
+ * blank line starts a paragraph and every other newline is kept, as plain text always was. */
+const Blurb: FC<{ text: string }> = ({ text }) => {
+  const whole = renderBlurb(text);
+  if (whole.blocks) return <div class="panel blurb html">{raw(whole.html)}</div>;
+  return <div class="panel blurb">{text.split(/\n\s*\n/).map((para) => <p>{raw(renderBlurb(para).html)}</p>)}</div>;
+};
+
 export const CataloguePage: FC<CatalogueProps> = (p) => {
   const c = p.catalogue;
   const canOrder = !!p.session && p.allowed;
@@ -60,11 +72,10 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
   const showColumns = { stock: c.showInStock, build: c.showInBuild, reserved: c.showReserved };
   return (
     <>
-      {p.store.blurb && (
-        <div class="panel blurb">
-          {p.store.blurb.split(/\n\s*\n/).map((para) => <p>{para}</p>)}
-        </div>
+      {p.banner && (
+        <div class="banner"><img src={`/banner?v=${p.banner}`} alt="" /></div>
       )}
+      {p.store.blurb && <Blurb text={p.store.blurb} />}
       {/* Nothing about who issues contracts or where to collect is guessed: the owner's own
           words above are the only place such things are said. */}
 

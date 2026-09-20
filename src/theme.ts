@@ -75,6 +75,30 @@ header.bar .who button.link { line-height: 1; }
 .dim { color: var(--text-dim); font-size: 12px; }
 .faint { color: var(--text-faint); font-size: 11px; }
 .blurb p { margin: 0 0 8px; white-space: pre-wrap; }
+.blurb > :last-child { margin-bottom: 0; }
+.blurb a { text-decoration: underline; text-decoration-color: var(--accent-surface); }
+.blurb img { max-width: 100%; height: auto; }
+.blurb :is(code, kbd) { font-family: Consolas, Menlo, "DejaVu Sans Mono", monospace; font-size: 12px; background: var(--surface-panel-alt); padding: 1px 4px; border-radius: 3px; }
+/* Laid out with block tags: the tags decide, as on any page. */
+.blurb.html p { white-space: normal; }
+.blurb.html :is(h1, h2, h3, h4, h5, h6) { margin: 12px 0 6px; line-height: 1.3; font-weight: 600; }
+.blurb.html h1 { font-size: 17px; color: var(--text-bright); }
+.blurb.html h2 { font-size: 14px; color: var(--accent); }
+.blurb.html h3 { font-size: 13px; color: var(--text-bright); }
+.blurb.html :is(h4, h5, h6) { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+.blurb.html > :first-child { margin-top: 0; }
+.blurb.html :is(ul, ol) { margin: 0 0 8px; padding-left: 22px; }
+.blurb.html li { margin: 2px 0; }
+.blurb.html blockquote { margin: 0 0 8px; padding: 4px 12px; border-left: 3px solid var(--border-strong); color: var(--text-muted); }
+.blurb.html hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 10px 0; }
+.blurb.html pre { background: var(--surface-panel-alt); padding: 8px 10px; border-radius: 3px; overflow-x: auto; font-size: 12px; }
+.blurb.html table { border-collapse: collapse; margin: 0 0 8px; }
+.blurb.html :is(th, td) { border: 1px solid var(--border-subtle); padding: 4px 8px; text-align: left; vertical-align: top; }
+.blurb.html th { color: var(--text-bright); background: var(--surface-panel-alt); }
+.blurb.html details { margin: 0 0 8px; }
+.blurb.html summary { cursor: pointer; color: var(--accent); }
+.banner { margin-top: 16px; }
+.banner img { display: block; width: 100%; max-height: 300px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-subtle); }
 table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 table.grid th {
   text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;

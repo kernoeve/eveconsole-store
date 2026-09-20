@@ -8,7 +8,7 @@
 import { randomToken } from "./crypto";
 import type { Catalogue, StoreInfo } from "./protocol";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 
 const steps: { version: number; sql: string[] }[] = [
@@ -64,6 +64,13 @@ const steps: { version: number; sql: string[] }[] = [
     version: 2,
     // Whether the buyer wants EVE mail as the order moves, asked when the order is placed.
     sql: [`ALTER TABLE web_orders ADD COLUMN mail_updates INTEGER NOT NULL DEFAULT 1`],
+  },
+  {
+    version: 3,
+    // Pictures the site shows for the store: today the banner across the top of the price list.
+    sql: [`CREATE TABLE IF NOT EXISTS assets (
+             kind TEXT PRIMARY KEY, content_type TEXT NOT NULL, sha256 TEXT NOT NULL,
+             bytes BLOB NOT NULL, updated_at TEXT NOT NULL)`],
   },
 ];
 
@@ -131,3 +138,9 @@ export async function loadStore(db: D1Database): Promise<StoreState | null> {
 }
 
 export const now = () => new Date().toISOString();
+
+/** The hash of the banner the site holds, or "" without one. */
+export async function bannerHash(db: D1Database): Promise<string> {
+  const row = await db.prepare(`SELECT sha256 FROM assets WHERE kind = 'banner'`).first<{ sha256: string }>();
+  return row?.sha256 ?? "";
+}

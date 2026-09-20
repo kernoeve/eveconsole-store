@@ -43,7 +43,8 @@ in the next call.
   "generation": "8f2a…",       // the site database generation the app last saw, "" on first contact
   "store": {
     "name": "Some Shop",
-    "blurb": "Plain text. Blank lines separate paragraphs.",
+    "blurb": "HTML, or plain text — see The blurb below",
+    "banner": { "sha256": "…", "contentType": "image/webp" },   // null = none now; absent = leave what the site holds
     "characterName": "Some Seller",   // who issues contracts; "" for a web-only store with no character
     "pickup": "Jita IV - Moon 4 - Caldari Navy Assembly Plant",   // the posting's location, may be ""
     "senderPolicy": "list",           // "anyone" | "list"
@@ -147,9 +148,38 @@ overlays carry alpha first, as Avalonia writes it).
   ],
   "activeSessions": 2,            // signed-in sessions active in the last few minutes
   "needsFullOrders": false,       // the site holds no order rows: the app resends them all
+  "bannerSha256": "…",            // the banner the site holds, "" for none
   "serverTime": "2026-09-19T20:06:00Z"
 }
 ```
+
+## The blurb
+
+`store.blurb` is shown on the front page as HTML. The site keeps these tags — `p div h1…h6
+blockquote pre hr ul ol li dl dt dd table thead tbody tfoot tr th td caption figure figcaption
+details summary a b strong i em u s del ins small sup sub code kbd mark span abbr q cite br wbr
+img`, and EVE mail's `font` (its `#aarrggbb` colour and pixel size become a style) — with
+`title`, `style`, `href` (http, https, mailto), `target="_blank"`, `src` (http, https), `alt`,
+`width`, `height`, `colspan`, `rowspan`, `start` and `open`. Every tag is closed; an unknown tag
+goes and its content stays; `script`, `style`, `iframe` and the like go with their content;
+handlers and other schemes are dropped. Without block tags the text is shown as it always was:
+a blank line starts a paragraph and every other newline is kept. With block tags the tags decide.
+
+## The banner
+
+`store.banner` names the picture across the top of the price list by hash and type; the bytes
+go on their own call, `PUT {site}/api/sync/banner`, signed like the sync call, with the body
+
+```jsonc
+{ "sha256": "…", "contentType": "image/webp", "data": "…base64…" }
+```
+
+The site keeps a PNG, JPEG, WebP or GIF of up to 1,000,000 bytes whose hash matches, answers
+`{ "ok": true, "sha256": "…" }`, and serves it at `GET {site}/banner` (`?v=hash` for a copy the
+browser may cache for good). The app sends it when the sync reply's `bannerSha256` differs from
+the store's, having first scaled anything wider than 1800 pixels or over the limit down and
+encoded it as WebP. A push with `"banner": null` takes the banner down; a push without the
+field leaves it.
 
 ## What each side promises
 
@@ -169,6 +199,8 @@ overlays carry alpha first, as Avalonia writes it).
   `type`, `group` or `store`, `period` of `days`, `months`, `years` or `all`, `count`) and the
   SDE group of every item and order row (`groupId`), so the site can count it. The site greys
   out and refuses what is over; the app holds anything over for review when it books.
+- Sends the banner's bytes only when the reply's `bannerSha256` is not the store's, and says
+  `"banner": null` when the store has none.
 
 
 **The site**
@@ -186,4 +218,5 @@ overlays carry alpha first, as Avalonia writes it).
   keys (`ssoConfigured`), which client id, and a 12-character fingerprint of the secret
   (`ssoClientId`, `ssoKeyFingerprint`), so the app can say when sign-in is not set up or the keys
   are not the ones it holds.
+- Shows the blurb as HTML, tidied as above, and the banner it holds above the price list.
 

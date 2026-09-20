@@ -5,6 +5,12 @@ export const SYNC_PATH = "/api/sync";
 export const TIMESTAMP_HEADER = "X-EveConsole-Timestamp";
 export const SIGNATURE_HEADER = "X-EveConsole-Signature";
 
+/** Where the app puts the banner's bytes, signed like the sync call. */
+export const BANNER_PATH = "/api/sync/banner";
+/** The most a banner may be, in bytes as stored: well under D1's row limit. */
+export const BANNER_MAX_BYTES = 1_000_000;
+export const BANNER_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
 export interface SyncRequest {
   protocol: number;
   appVersion?: string;
@@ -28,6 +34,10 @@ export interface StoreInfo {
   mailUpdates?: boolean;
   /** The store's per-buyer purchase limit, when it has one. */
   limit?: Limit | null;
+  /** The banner across the top of the price list, by hash: null says there is none now, and a
+   * push without the field (an older app) leaves whatever the site holds alone. The bytes come
+   * on their own call. */
+  banner?: BannerInfo | null;
   theme: Theme;
 }
 
@@ -39,6 +49,16 @@ export interface Limit {
   count: number;
 }
 
+
+export interface BannerInfo {
+  sha256: string;
+  contentType: string;
+}
+
+/** PUT /api/sync/banner: the bytes as base64, in JSON so the type travels under the signature. */
+export interface BannerUpload extends BannerInfo {
+  data: string;
+}
 
 export interface Allowed {
   id: number;
@@ -133,6 +153,8 @@ export interface SyncResponse {
   events: SiteEvent[];
   activeSessions: number;
   needsFullOrders: boolean;
+  /** The hash of the banner the site holds, "" for none: the app sends the bytes when it differs from the store's. */
+  bannerSha256: string;
   serverTime: string;
 }
 

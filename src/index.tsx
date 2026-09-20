@@ -4,13 +4,13 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "./env";
 import { beginLogin, csrfOk, finishLogin, logout, safeNext, sessionMiddleware } from "./auth";
-import { ensureSchema, loadStore, type StoreState } from "./db";
+import { bannerHash, ensureSchema, loadStore, type StoreState } from "./db";
 import { isAllowed } from "./policy";
 import { cancelOrder, cancelWebOrder, ordersFor, pendingFor, pendingUnits, placeOrder, waitingFor } from "./orders";
 import { allowanceFor, describeLimit, orderedByScope } from "./limits";
 
-import { handleSync, handleVersion } from "./sync";
-import { SYNC_PATH, type Theme } from "./protocol";
+import { handleBanner, handleSync, handleVersion } from "./sync";
+import { BANNER_PATH, SYNC_PATH, type Theme } from "./protocol";
 import { pickVariant } from "./theme";
 import { Layout, Message, type Flash } from "./views/layout";
 import { CataloguePage, OrdersPage } from "./views/pages";
@@ -20,7 +20,25 @@ type Ctx = Context<AppEnv>;
 
 // ── The app's endpoints: no session, no cookies, only the signature ──
 app.post(SYNC_PATH, handleSync);
+app.put(BANNER_PATH, handleBanner);
 app.get("/api/version", handleVersion);
+
+// The banner, for the page's <img>: public, no session, cached for good when the page names the
+// exact version (?v=hash) and briefly otherwise.
+app.get("/banner", async (c) => {
+  await ensureSchema(c.env.DB);
+  const row = await c.env.DB.prepare(`SELECT content_type, sha256, bytes FROM assets WHERE kind = 'banner'`)
+    .first<{ content_type: string; sha256: string; bytes: ArrayBuffer | number[] }>();
+  if (!row) return c.notFound();
+  // A BLOB is an ArrayBuffer from D1 itself and an array of numbers from the local runtime.
+  const bytes = row.bytes instanceof ArrayBuffer ? new Uint8Array(row.bytes) : Uint8Array.from(row.bytes);
+  const etag = `"${row.sha256}"`;
+  if (c.req.header("If-None-Match") === etag) return new Response(null, { status: 304, headers: { ETag: etag } });
+  const pinned = c.req.query("v") === row.sha256;
+  return new Response(bytes, {
+    headers: { "Content-Type": row.content_type, ETag: etag, "Cache-Control": pinned ? "public, max-age=31536000, immutable" : "public, max-age=300" },
+  });
+});
 
 // ── Everything else is for buyers ──
 app.use("*", sessionMiddleware);
@@ -90,7 +108,7 @@ app.get("/", async (c) => {
     : null;
   return c.html(<Layout storeName={store.info.name} active="catalogue" asOf={asOf(store)} {...common}>
     <CataloguePage store={store.info} catalogue={store.catalogue} pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed}
-                   limit={limit} taken={taken} />
+                   limit={limit} taken={taken} banner={await bannerHash(c.env.DB)} />
   </Layout>);
 
 });

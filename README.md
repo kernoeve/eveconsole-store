@@ -30,7 +30,7 @@ and never touches the orders and settings the site already holds.
 ## Set up from EVE Console
 
 The store's Config tab can deploy and update the site for you through Cloudflare's API, under
-"Hosting on Cloudflare":
+"Automatic deployment and updates on Cloudflare" on its Web site sub-tab:
 
 1. Make an API token (the app links to the page): the "Edit Cloudflare Workers" template with
    "D1: Edit" added. Paste it into the app and press Save token; it stays on that machine only,
@@ -45,6 +45,10 @@ The store's Config tab can deploy and update the site for you through Cloudflare
 Press Check to see what the site runs against the newest release, and Deploy again to update;
 the site's orders and settings are never touched. A site set up by hand and one deployed by the
 app are the same thing afterwards; either can be updated either way.
+
+What the front page shows besides the price list is set on the same tab: the words under "About
+this store", which may be HTML, and an optional banner picture across the top, which the app
+scales down and sends to the site.
 
 ## How it talks to the app
 

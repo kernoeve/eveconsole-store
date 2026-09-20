@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
 import app from "../src/index";
-import { sha256Hex, signSync, verifySync } from "../src/crypto";
-
-import { PROTOCOL, SIGNATURE_HEADER, TIMESTAMP_HEADER, type SyncRequest, type SyncResponse } from "../src/protocol";
+import { base64Decode, sha256Hex, signSync, verifySync } from "../src/crypto";
+import { renderBlurb } from "../src/markup";
+import { BANNER_PATH, PROTOCOL, SIGNATURE_HEADER, TIMESTAMP_HEADER, type SyncRequest, type SyncResponse } from "../src/protocol";
 import { ensureSchema } from "../src/db";
 import { placeOrder, cancelOrder } from "../src/orders";
 import { isAllowed } from "../src/policy";
@@ -23,6 +23,19 @@ async function sync(body: SyncRequest, secret = SECRET, ts = Math.floor(Date.now
     body: bytes,
   }, env);
 }
+
+/** Any other signed call the app makes, with a JSON body. */
+async function signed(path: string, method: string, body: unknown): Promise<Response> {
+  const bytes = enc.encode(JSON.stringify(body));
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = await signSync(SECRET, ts, bytes);
+  return app.request(path, {
+    method, headers: { "Content-Type": "application/json", [TIMESTAMP_HEADER]: ts, [SIGNATURE_HEADER]: sig }, body: bytes,
+  }, env);
+}
+
+/** Sixty-odd bytes that pass for a picture; the site keeps bytes, it does not look at them. */
+const PNG_DOT = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 const catalogue = {
   hash: "abc", asOf: "2026-09-19T20:00:00Z",
@@ -54,6 +67,37 @@ describe("the limit's period", () => {
     expect(periodStart({ units: 1, scope: "type", period: "months", count: 1 }, now)?.toISOString()).toBe("2026-03-03T12:00:00.000Z");
     expect(periodStart({ units: 1, scope: "type", period: "years", count: 2 }, now)?.toISOString()).toBe("2024-03-31T12:00:00.000Z");
     expect(periodStart({ units: 1, scope: "type", period: "all", count: 1 }, now)).toBeNull();
+  });
+});
+
+describe("the blurb's markup", () => {
+  it("keeps plain text as it was, with & and < made safe", () => {
+    expect(renderBlurb("R&D <3 you &amp; me &#8212; done")).toEqual({ html: "R&amp;D &lt;3 you &amp; me &#8212; done", blocks: false });
+  });
+
+  it("keeps the tags it knows, closes what was left open, and drops the rest with their content kept", () => {
+    expect(renderBlurb("<b>Bold <i>both</b> tail").html).toBe("<b>Bold <i>both</i></b> tail");
+    expect(renderBlurb("<u>never closed").html).toBe("<u>never closed</u>");
+    expect(renderBlurb("a</div>b <center><marquee>hi</marquee></center>").html).toBe("ab hi");
+    expect(renderBlurb('<img src="https://x.example/y.png" alt="a" onerror="x()"><img src="data:1">').html)
+      .toBe('<img src="https://x.example/y.png" alt="a">');
+    expect(renderBlurb("<!-- not shown -->x").html).toBe("x");
+  });
+
+  it("lets nothing run", () => {
+    expect(renderBlurb("x<script>alert(1)</script>y<style>p{}</style>z<iframe src=x>").html).toBe("xyz");
+    expect(renderBlurb('<a href="javascript:alert(1)" onclick="x()">x</a>').html).toBe("<a>x</a>");
+    expect(renderBlurb('<a href="java&#115;cript:1">x</a>').html).toBe("<a>x</a>");
+    expect(renderBlurb('<a href="https://e.example/?a=1&b=2" target="_blank">y</a>').html)
+      .toBe('<a href="https://e.example/?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">y</a>');
+    expect(renderBlurb('<span style="color:red;background:url(x)">a</span><span style="color:red">b</span>').html)
+      .toBe('<span>a</span><span style="color:red">b</span>');
+  });
+
+  it("turns EVE mail's font into a span, and tells block layout from text", () => {
+    expect(renderBlurb('<font size="12" color="#ffc8a84b">gold</font>').html).toBe('<span style="color:#c8a84b;font-size:12px">gold</span>');
+    expect(renderBlurb("one<br>two").blocks).toBe(false);
+    expect(renderBlurb("<p>one</p>\n<ul><li>x</ul>")).toEqual({ html: "<p>one</p>\n<ul><li>x</li></ul>", blocks: true });
   });
 });
 
@@ -292,6 +336,46 @@ describe("the buyer's pages", () => {
     expect(wide).not.toContain("Limit reached");
     expect(wide).toMatch(/name="units" min="1" max="\d+"/);
     expect(wide).toContain("1,000 units from this store per 30 days");
+  });
+
+  it("shows the owner's words as HTML, tidied", async () => {
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone", blurb: "Hello <b>there</b>\nsecond line<script>alert(1)</script>\n\n<u>Next" } }));
+    const home = await (await app.request("/", {}, env)).text();
+    expect(home).toContain('<div class="panel blurb"><p>Hello <b>there</b>\nsecond line</p><p><u>Next</u></p></div>');
+    expect(home).not.toContain("<script>alert");
+  });
+
+  it("holds the banner the app sends, shows it above the price list, and drops it when the store has none", async () => {
+    const png = base64Decode(PNG_DOT);
+    const sha = await sha256Hex(png);
+    const first = (await (await sync(push())).json()) as SyncResponse;
+    expect(first.bannerSha256).toBe("");
+
+    expect((await app.request(BANNER_PATH, { method: "PUT", body: "{}" }, env)).status).toBe(401);
+    expect((await signed(BANNER_PATH, "PUT", { sha256: "0".repeat(64), contentType: "image/png", data: PNG_DOT })).status).toBe(400);
+    expect((await signed(BANNER_PATH, "PUT", { sha256: sha, contentType: "text/html", data: PNG_DOT })).status).toBe(415);
+    expect((await signed(BANNER_PATH, "PUT", { sha256: sha, contentType: "image/png", data: "A".repeat(1_333_336) })).status).toBe(413);
+    expect((await signed(BANNER_PATH, "PUT", { sha256: sha, contentType: "image/png", data: PNG_DOT })).status).toBe(200);
+
+    const withBanner = { ...push().store, senderPolicy: "anyone" as const, banner: { sha256: sha, contentType: "image/png" } };
+    const second = (await (await sync(push({ store: withBanner }))).json()) as SyncResponse;
+    expect(second.bannerSha256).toBe(sha);
+
+    const img = await app.request(`/banner?v=${sha}`, {}, env);
+    expect(img.status).toBe(200);
+    expect(img.headers.get("Content-Type")).toBe("image/png");
+    expect(img.headers.get("Cache-Control")).toContain("immutable");
+    expect(new Uint8Array(await img.arrayBuffer())).toEqual(png);
+    expect((await app.request("/banner", { headers: { "If-None-Match": `"${sha}"` } }, env)).status).toBe(304);
+    const home = await (await app.request("/", {}, env)).text();
+    expect(home).toContain('class="banner"');
+    expect(home).toContain(`src="/banner?v=${sha}"`);
+
+    // A push that says nothing about it (an older app) leaves it; null takes it down.
+    expect(((await (await sync(push({ store: { ...withBanner, banner: undefined } }))).json()) as SyncResponse).bannerSha256).toBe(sha);
+    expect(((await (await sync(push({ store: { ...withBanner, banner: null } }))).json()) as SyncResponse).bannerSha256).toBe("");
+    expect((await app.request("/banner", {}, env)).status).toBe(404);
+    expect(await (await app.request("/", {}, env)).text()).not.toContain('class="banner"');
   });
 
   it("refuses a form whose token is not the session's", async () => {

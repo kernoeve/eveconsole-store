@@ -6,12 +6,11 @@
 
 import type { Context } from "hono";
 import type { AppEnv } from "./env";
-import { sha256Hex, verifySync } from "./crypto";
-
-import { ensureSchema, meta, now, SCHEMA_VERSION } from "./db";
+import { base64Decode, sha256Hex, verifySync } from "./crypto";
+import { bannerHash, ensureSchema, meta, now, SCHEMA_VERSION } from "./db";
 import {
-  PROTOCOL, SIGNATURE_HEADER, TIMESTAMP_HEADER,
-  type SiteEvent, type SyncRequest, type SyncResponse,
+  BANNER_MAX_BYTES, BANNER_TYPES, PROTOCOL, SIGNATURE_HEADER, TIMESTAMP_HEADER,
+  type BannerUpload, type SiteEvent, type SyncRequest, type SyncResponse,
 } from "./protocol";
 
 const EVENTS_PER_REPLY = 200;
@@ -45,6 +44,11 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
   for (const a of req.store.allowed ?? [])
     allowed.push(db.prepare(`INSERT OR REPLACE INTO allowed (id, kind, name) VALUES (?1, ?2, ?3)`).bind(a.id, a.kind, a.name ?? ""));
   await db.batch(allowed);
+
+  // ── The banner: only its hash travels here; the bytes come on their own call when the reply
+  //    shows the site lacks them. Null says the store has none now. Absent says nothing — an
+  //    older app — and what the site holds stays. ──
+  if (req.store.banner === null) await db.prepare(`DELETE FROM assets WHERE kind = 'banner'`).run();
 
   // ── The order book: upserts by the app's id, tombstones, and what became of web orders ──
   const writes: D1PreparedStatement[] = [];
@@ -99,6 +103,7 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
     // No order rows at all, and none in this call, from an app that thinks it has pushed
     // them: a database restored from before its ledger. It resends everything.
     needsFullOrders: (orderCount?.n ?? 0) === 0 && (req.orders?.length ?? 0) === 0 && req.generation === generation,
+    bannerSha256: await bannerHash(db),
     serverTime: ts,
   };
   return c.json(response);
@@ -120,6 +125,35 @@ export async function handleVersion(c: Context<AppEnv>): Promise<Response> {
     ssoClientId: clientId,
     ssoKeyFingerprint: secret ? (await sha256Hex(secret.trim())).slice(0, 12) : "",
   });
+}
+
+/** PUT /api/sync/banner — the banner's bytes, sent when the sync reply shows the site does not
+ * hold the one the store has. Signed like the sync call; base64 inside JSON, so the content
+ * type is under the same signature as the bytes. */
+export async function handleBanner(c: Context<AppEnv>): Promise<Response> {
+  const body = new Uint8Array(await c.req.arrayBuffer());
+  const ok = await verifySync(c.env.STORE_SYNC_SECRET, c.req.header(TIMESTAMP_HEADER), c.req.header(SIGNATURE_HEADER), body);
+  if (!ok) return c.json({ error: "signature refused" }, 401);
+
+  let up: BannerUpload;
+  try { up = JSON.parse(new TextDecoder().decode(body)) as BannerUpload; }
+  catch { return c.json({ error: "the body is not JSON" }, 400); }
+  if (!BANNER_TYPES.has(up.contentType)) return c.json({ error: `a banner is a PNG, JPEG, WebP or GIF, not ${up.contentType}` }, 415);
+
+  let bytes: Uint8Array;
+  try { bytes = base64Decode(up.data ?? ""); }
+  catch { return c.json({ error: "the picture is not base64" }, 400); }
+  if (bytes.length === 0 || bytes.length > BANNER_MAX_BYTES)
+    return c.json({ error: `a banner is at most ${BANNER_MAX_BYTES.toLocaleString("en-US")} bytes; this one is ${bytes.length.toLocaleString("en-US")}` }, 413);
+  if ((await sha256Hex(bytes)) !== up.sha256) return c.json({ error: "the picture does not match its hash" }, 400);
+
+  await ensureSchema(c.env.DB);
+  await c.env.DB.prepare(
+    `INSERT INTO assets (kind, content_type, sha256, bytes, updated_at) VALUES ('banner', ?1, ?2, ?3, ?4)
+     ON CONFLICT(kind) DO UPDATE SET content_type = excluded.content_type, sha256 = excluded.sha256,
+       bytes = excluded.bytes, updated_at = excluded.updated_at`,
+  ).bind(up.contentType, up.sha256, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), now()).run();
+  return c.json({ ok: true, sha256: up.sha256 });
 }
 
 
