@@ -11,7 +11,8 @@ import type { Context, MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { AppEnv, Session } from "./env";
 import { base64url, base64urlDecode, randomToken, sha256Hex } from "./crypto";
-import { ensureSchema, now } from "./db";
+import { ensureSchema, loadStore, now } from "./db";
+import { isAllowed, restrictedText } from "./policy";
 
 const SSO_AUTHORIZE = "https://login.eveonline.com/v2/oauth/authorize/";
 const SSO_TOKEN     = "https://login.eveonline.com/v2/oauth/token";
@@ -72,6 +73,8 @@ export interface LoginResult {
 export interface LoginFailure {
   ok: false;
   reason: string;
+  /** The character verified but the store does not serve them: refused, not failed. */
+  restricted?: boolean;
 }
 
 /** The callback half: code to token, token to character, character to session. */
@@ -122,6 +125,13 @@ export async function finishLogin(c: Context<AppEnv>): Promise<LoginResult | Log
     allianceId: affiliation?.allianceId ?? null,
     csrf: randomToken(16),
   };
+
+  // ⚠️ A store that serves a list refuses the sign-in itself: no session, no cookie, and a
+  // page that says so. It used to sign the character in and then show them a locked door,
+  // which read as "I can log in to a store I am not allowed into".
+  const store = await loadStore(db);
+  if (store && store.info.senderPolicy === "list" && !(await isAllowed(db, store.info, session)))
+    return { ok: false, restricted: true, reason: restrictedText(store.info.name, name) };
   const created = now();
   const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000).toISOString();
   await db.prepare(

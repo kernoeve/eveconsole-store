@@ -5,7 +5,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "./env";
 import { beginLogin, csrfOk, finishLogin, logout, safeNext, sessionMiddleware } from "./auth";
 import { bannerHash, buyerTheme, ensureSchema, loadStore, saveBuyerTheme, type StoreState } from "./db";
-import { isAllowed } from "./policy";
+import { isAllowed, restrictedText } from "./policy";
 import { cancelOrder, cancelWebOrder, ordersFor, pendingFor, pendingUnits, placeOrder, waitingFor } from "./orders";
 import { allowanceFor, describeLimit, orderedByScope } from "./limits";
 
@@ -97,11 +97,14 @@ app.get("/", async (c) => {
 
   const allowed = session ? await isAllowed(c.env.DB, store.info, session) : false;
   if (store.info.senderPolicy === "list" && !allowed)
+  {
+    // A session whose character is not on the list — the list changed under them, or the
+    // session predates the check at sign-in — ends here, with the same refusal sign-in gives.
+    if (session) return refuse(c, store, session.name);
     return c.html(<Layout storeName={store.info.name} active="catalogue" {...common}>
-      {session
-        ? <Message title="A private shop" text={`${store.info.name} serves a list of buyers, and ${session.name} is not on it.`} />
-        : <Message title={store.info.name} text="This shop serves a list of buyers. Sign in with EVE to see whether you are on it." link={{ href: "/auth/login", label: "Sign in with EVE" }} />}
+      <Message title={store.info.name} text="This shop serves a list of buyers. Sign in with EVE to see whether you are on it." link={{ href: "/auth/login", label: "Sign in with EVE" }} />
     </Layout>);
+  }
 
   // With a purchase limit, what this buyer has taken already decides what the list offers them.
   const limit = store.info.limit ?? null;
@@ -115,10 +118,21 @@ app.get("/", async (c) => {
 
 });
 
+/** Ends the session and shows the refusal: the store serves a list and this character is not on it. */
+async function refuse(c: Ctx, store: StoreState, characterName: string): Promise<Response> {
+  await logout(c);
+  const { store: _s, session: _session, ...common } = await page(c);
+  return c.html(<Layout storeName={store.info.name} active="none" {...common} session={null}>
+    <Message title="A restricted store" text={restrictedText(store.info.name, characterName)} />
+  </Layout>, 403);
+}
+
 app.get("/orders", async (c) => {
   const { store, ...common } = await page(c);
   const session = common.session;
   if (!session) return c.redirect("/auth/login?next=/orders");
+  if (store && store.info.senderPolicy === "list" && !(await isAllowed(c.env.DB, store.info, session)))
+    return refuse(c, store, session.name);
   return c.html(<Layout storeName={store?.info.name ?? "Store"} active="orders" asOf={asOf(store)} {...common}>
     <OrdersPage session={session} waiting={await waitingFor(c.env.DB, session.characterId)} orders={await ordersFor(c.env.DB, session)} />
   </Layout>);
@@ -224,6 +238,10 @@ app.get("/auth/callback", async (c) => {
   const result = await finishLogin(c);
   if (result.ok) return c.redirect(result.next);
   const { store, ...common } = await page(c);
+  if (result.restricted)
+    return c.html(<Layout storeName={store?.info.name ?? "Store"} active="none" {...common}>
+      <Message title="A restricted store" text={result.reason} />
+    </Layout>, 403);
   return c.html(<Layout storeName={store?.info.name ?? "Store"} active="none" {...common}>
     <Message title="Sign-in did not complete" text={result.reason} link={{ href: "/auth/login", label: "Try again" }} />
   </Layout>, 400);

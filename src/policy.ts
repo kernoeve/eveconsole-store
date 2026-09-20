@@ -16,3 +16,9 @@ export async function isAllowed(db: D1Database, store: StoreInfo, s: Session): P
   ).bind(s.characterId, s.corporationId, s.allianceId).first();
   return !!rows;
 }
+
+/** The words a refused character reads, at sign-in or when a list changes under them. */
+export function restrictedText(storeName: string, characterName: string): string {
+  return `${storeName} sells only to buyers on its list, and ${characterName} is not on it. `
+       + "Sign-in has been refused. If you should be on the list, ask the store's owner to add you.";
+}

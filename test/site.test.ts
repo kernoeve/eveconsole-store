@@ -239,6 +239,30 @@ describe("the buyer's pages", () => {
     return { cookie: `sid=${id}`, csrf: "tok" };
   }
 
+  it("refuses a character who is not on a list store's list, and ends their session", async () => {
+    await sync(push());   // the list names only the buyer
+    await ensureSchema(env.DB);
+    const id = "test-stranger-" + Math.random().toString(36).slice(2);
+    const ts = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO sessions (id, character_id, name, corp_id, alliance_id, csrf, created_at, expires_at, last_seen_at)
+       VALUES (?1, ?2, ?3, ?4, NULL, 'tok', ?5, ?6, ?5)`,
+    ).bind(id, stranger.characterId, stranger.name, stranger.corporationId, ts, new Date(Date.now() + 3_600_000).toISOString()).run();
+
+    const r = await app.request("/", { headers: { Cookie: `sid=${id}` } }, env);
+    expect(r.status).toBe(403);
+    const html = await r.text();
+    expect(html).toContain("A restricted store");
+    expect(html).toContain("A Stranger is not on it");
+    expect(html).not.toContain("Sign out");                                          // no session left in the header
+    expect(r.headers.get("Set-Cookie") ?? "").toMatch(/sid=;|Max-Age=0/);            // the cookie is cleared
+    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM sessions WHERE id = ?1`).bind(id).first<{ n: number }>()).toEqual({ n: 0 });
+
+    // The orders page is no more welcoming.
+    const again = await (await app.request("/orders", { headers: { Cookie: `sid=${id}` } }, env));
+    expect([302, 403]).toContain(again.status);                                       // gone: sent to sign in
+  });
+
   it("renders the price list with items, prices and stock for a public shop", async () => {
     await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }));
     const r = await app.request("/", {}, env);

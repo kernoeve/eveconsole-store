@@ -216,7 +216,9 @@ field leaves it.
 - Keeps events until the app's cursor passes them.
 - Marks a web order withdrawn the moment its buyer cancels it and raises the `cancel` event so the
   app closes its review row; a withdrawn order is not relabelled by a later `rejected`.
-- Enforces the sender policy on every request, not only at sign-in.
+- Enforces the sender policy at sign-in — a character not on a list store's list gets a
+  refusal page and no session — and on every request after, so a list that changes ends the
+  sessions it no longer covers.
 - Answers `409` with its own protocol number when the versions differ, and reports its version
   at `GET /api/version` for the app's update check, together with whether it holds EVE application
   keys (`ssoConfigured`), which client id, and a 12-character fingerprint of the secret
