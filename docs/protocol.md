@@ -107,7 +107,8 @@ in the next call.
     { "webOrderId": "01K…", "state": "rejected", "reason": "Type 9999 is not on the price list." }
   ],
   "more": false,                  // more order rows are waiting; the app calls again at once
-  "visits": true                  // the app knows the "visit" event (site 0.1.11+); without it none are sent
+  "visits": true,                 // the app knows the "visit" event (site 0.1.11+); without it none are sent
+  "pushedOrders": 41              // order rows the app believes the site holds (0.1.12+); 0 means nothing to resend
 }
 ```
 
@@ -158,7 +159,7 @@ overlays carry alpha first, as Avalonia writes it).
     }
   ],
   "activeSessions": 2,            // signed-in sessions active in the last few minutes
-  "needsFullOrders": false,       // the site holds no order rows: the app resends them all
+  "needsFullOrders": false,       // the site holds no order rows though the app pushed some: the app resends them all
   "bannerSha256": "…",            // the banner the site holds, "" for none
   "serverTime": "2026-09-19T20:06:00Z"
 }

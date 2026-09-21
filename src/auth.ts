@@ -25,7 +25,7 @@ export const USER_AGENT = "eveconsole-store (+https://github.com/kernoeve/evecon
 export const SESSION_COOKIE = "sid";
 const SESSION_DAYS   = 14;
 const STATE_MINUTES  = 10;
-const TOUCH_SECONDS  = 60;
+const TOUCH_SECONDS  = 180;   // every row written counts against D1's daily allowance
 
 function secure(c: Context<AppEnv>): boolean {
   return new URL(c.req.url).protocol === "https:";

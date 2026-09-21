@@ -15,6 +15,8 @@ import {
 
 const EVENTS_PER_REPLY = 200;
 const ACTIVE_MINUTES = 5;
+/** How old the store row's pushed_at may get before an otherwise unchanged push refreshes it. */
+const PUSHED_AT_MINUTES = 10;
 
 export async function handleSync(c: Context<AppEnv>): Promise<Response> {
   const body = new Uint8Array(await c.req.arrayBuffer());
@@ -31,19 +33,41 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
   const generation = (await meta(db, "generation")) ?? "";
   const ts = now();
 
-  // ── The store and its catalogue: a snapshot, written whole ──
-  await db.prepare(
-    `INSERT INTO store (id, json, catalogue_json, catalogue_hash, pushed_at, app_version)
-     VALUES (1, ?1, ?2, ?3, ?4, ?5)
-     ON CONFLICT(id) DO UPDATE SET json = excluded.json, catalogue_json = excluded.catalogue_json,
-       catalogue_hash = excluded.catalogue_hash, pushed_at = excluded.pushed_at, app_version = excluded.app_version`,
-  ).bind(JSON.stringify(req.store), JSON.stringify(req.catalogue), req.catalogue.hash ?? "", ts, req.appVersion ?? "").run();
+  // ⚠️ D1 bills every row written, changed or not, and the free tier stops at 100,000 a day.
+  // The app calls every few minutes whether anything moved, so rewriting the store row and
+  // the allow-list on every call burned the whole allowance on nothing. Each is compared with
+  // what the site holds first and left alone when it matches; the store row's pushed_at is
+  // freshened only now and then, since the front page shows the catalogue's own as-of time.
 
-  // ── Who may buy: replaced whole, so a removed entry is gone at once ──
-  const allowed: D1PreparedStatement[] = [db.prepare(`DELETE FROM allowed`)];
-  for (const a of req.store.allowed ?? [])
-    allowed.push(db.prepare(`INSERT OR REPLACE INTO allowed (id, kind, name) VALUES (?1, ?2, ?3)`).bind(a.id, a.kind, a.name ?? ""));
-  await db.batch(allowed);
+  // ── The store and its catalogue: a snapshot, written when it changed ──
+  const storeJson     = JSON.stringify(req.store);
+  const catalogueJson = JSON.stringify(req.catalogue);
+  const catalogueHash = req.catalogue.hash ?? "";
+  const appVersion    = req.appVersion ?? "";
+  const held = await db.prepare(`SELECT json, catalogue_hash, pushed_at, app_version FROM store WHERE id = 1`)
+    .first<{ json: string; catalogue_hash: string; pushed_at: string | null; app_version: string }>();
+  const sameStore = held !== null && held.json === storeJson && held.catalogue_hash === catalogueHash && held.app_version === appVersion;
+  const freshEnough = !!held?.pushed_at && Date.parse(held.pushed_at) > Date.now() - PUSHED_AT_MINUTES * 60_000;
+  if (!(sameStore && freshEnough))
+    await db.prepare(
+      `INSERT INTO store (id, json, catalogue_json, catalogue_hash, pushed_at, app_version)
+       VALUES (1, ?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT(id) DO UPDATE SET json = excluded.json, catalogue_json = excluded.catalogue_json,
+         catalogue_hash = excluded.catalogue_hash, pushed_at = excluded.pushed_at, app_version = excluded.app_version`,
+    ).bind(storeJson, catalogueJson, catalogueHash, ts, appVersion).run();
+
+  // ── Who may buy: replaced whole when it differs, so a removed entry is gone at once ──
+  const wanted = (req.store.allowed ?? []).map((a) => ({ id: a.id, kind: a.kind, name: a.name ?? "" }));
+  const have = (await db.prepare(`SELECT id, kind, name FROM allowed`).all<{ id: number; kind: string; name: string }>()).results;
+  const entry = (a: { id: number; kind: string; name: string }) => `${a.kind}:${a.id}:${a.name}`;
+  const haveSet = new Set(have.map(entry));
+  const sameAllowed = have.length === wanted.length && wanted.every((w) => haveSet.has(entry(w)));
+  if (!sameAllowed) {
+    const allowed: D1PreparedStatement[] = [db.prepare(`DELETE FROM allowed`)];
+    for (const a of wanted)
+      allowed.push(db.prepare(`INSERT OR REPLACE INTO allowed (id, kind, name) VALUES (?1, ?2, ?3)`).bind(a.id, a.kind, a.name));
+    await db.batch(allowed);
+  }
 
   // ── The banner: only its hash travels here; the bytes come on their own call when the reply
   //    shows the site lacks them. Null says the store has none now. Absent says nothing — an
@@ -72,9 +96,12 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
     writes.push(db.prepare(`DELETE FROM orders WHERE id = ?1`).bind(id));
     removedApplied.push(id);
   }
+  // Only a row whose state or reason would actually change: the app repeats every held order's
+  // state on every call, and a no-op UPDATE would still count as a row written.
   for (const w of req.webOrders ?? [])
     writes.push(db.prepare(
-      `UPDATE web_orders SET state = ?2, reason = ?3, updated_at = ?4 WHERE id = ?1 AND state IN ('submitted', 'review')`,
+      `UPDATE web_orders SET state = ?2, reason = ?3, updated_at = ?4
+       WHERE id = ?1 AND state IN ('submitted', 'review') AND (state <> ?2 OR reason <> ?3)`,
     ).bind(w.webOrderId, w.state, w.reason ?? "", ts));
   // Events the app has applied are done with.
   writes.push(db.prepare(`DELETE FROM events WHERE seq <= ?1`).bind(req.cursor ?? 0));
@@ -104,7 +131,12 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
     activeSessions: active?.n ?? 0,
     // No order rows at all, and none in this call, from an app that thinks it has pushed
     // them: a database restored from before its ledger. It resends everything.
-    needsFullOrders: (orderCount?.n ?? 0) === 0 && (req.orders?.length ?? 0) === 0 && req.generation === generation,
+    // ⚠️ Only when the app says it HAS pushed some (pushedOrders, its ledger's size). A store
+    // with no orders at all used to be told to resend on every call, resent nothing, and called
+    // straight back — a loop that rewrote the store row four times a cycle. An older app that
+    // does not say is taken at its word.
+    needsFullOrders: (orderCount?.n ?? 0) === 0 && (req.orders?.length ?? 0) === 0 && req.generation === generation
+                     && (req.pushedOrders === undefined || req.pushedOrders > 0),
     bannerSha256: await bannerHash(db),
     serverTime: ts,
   };

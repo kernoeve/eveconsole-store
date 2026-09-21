@@ -468,6 +468,44 @@ describe("the buyer's pages", () => {
     expect(visits[0].awayMinutes).toBeGreaterThanOrEqual(119);
   });
 
+  it("writes the store row and the allow-list only when they changed", async () => {
+    await sync(push());
+    const old = "2020-01-01T00:00:00.000Z";
+    await env.DB.prepare(`UPDATE store SET pushed_at = ?1 WHERE id = 1`).bind(old).run();
+    // The same push again: the row is stale, so it is freshened.
+    await sync(push());
+    const first = await env.DB.prepare(`SELECT pushed_at FROM store WHERE id = 1`).first<{ pushed_at: string }>();
+    expect(first!.pushed_at).not.toBe(old);
+    // And again: fresh and unchanged, so left alone — the same pushed_at down to the millisecond.
+    await new Promise((r) => setTimeout(r, 5));
+    await sync(push());
+    const second = await env.DB.prepare(`SELECT pushed_at FROM store WHERE id = 1`).first<{ pushed_at: string }>();
+    expect(second!.pushed_at).toBe(first!.pushed_at);
+    // A changed catalogue is written at once, fresh or not.
+    await sync(push({ catalogue: { ...catalogue, hash: "changed" } }));
+    const third = await env.DB.prepare(`SELECT pushed_at, catalogue_hash FROM store WHERE id = 1`).first<{ pushed_at: string; catalogue_hash: string }>();
+    expect(third!.catalogue_hash).toBe("changed");
+    expect(third!.pushed_at).not.toBe(first!.pushed_at);
+
+    // The allow-list is replaced when the list the app sends differs.
+    await sync(push({ catalogue: { ...catalogue, hash: "changed" }, store: { ...push().store, allowed: [{ id: 2118000001, kind: "character", name: "Some Buyer" }, { id: 98000001, kind: "corporation", name: "Some Corp" }] } }));
+    const rows = (await env.DB.prepare(`SELECT id FROM allowed ORDER BY id`).all<{ id: number }>()).results.map((r) => r.id);
+    expect(rows).toEqual([98000001, 2118000001]);
+  });
+
+  it("asks for a resend only from an app that has pushed orders before", async () => {
+    await ensureSchema(env.DB);
+    await env.DB.prepare(`DELETE FROM orders`).run();   // rows other tests pushed: this one is about an empty book
+    const first = await (await sync(push())).json<SyncResponse>();
+    const gen = first.generation;
+    // An older app says nothing about its ledger: taken at its word, as before.
+    expect((await (await sync(push({ generation: gen }))).json<SyncResponse>()).needsFullOrders).toBe(true);
+    // A store with no orders at all: nothing to resend, no loop.
+    expect((await (await sync(push({ generation: gen, pushedOrders: 0 }))).json<SyncResponse>()).needsFullOrders).toBe(false);
+    // An app that did push orders the site no longer holds: resend.
+    expect((await (await sync(push({ generation: gen, pushedOrders: 3 }))).json<SyncResponse>()).needsFullOrders).toBe(true);
+  });
+
   it("refuses a form whose token is not the session's", async () => {
     const s = await signedIn();
     const r = await app.request("/orders", {

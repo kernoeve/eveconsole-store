@@ -25,6 +25,9 @@ export interface SyncRequest {
   /** Whether the app knows the "visit" event kind; without it none are sent, so an older app
    * never sees a kind it would refuse. */
   visits?: boolean;
+  /** How many order rows the app believes the site holds (its ledger). Zero says there is
+   * nothing to resend, so an empty order book is not taken for a lost one. */
+  pushedOrders?: number;
 }
 
 export interface StoreInfo {
