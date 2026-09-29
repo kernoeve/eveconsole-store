@@ -4,7 +4,8 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "./env";
 import { beginLogin, csrfOk, finishLogin, logout, safeNext, sessionMiddleware } from "./auth";
-import { bannerHash, buyerTheme, ensureSchema, loadStore, saveBuyerTheme, type StoreState } from "./db";
+import { bannerHash, buyerTheme, ensureSchema, loadStore, saveBuyerTheme, storeLanguage, type StoreState } from "./db";
+import { langOf, t, tell, type Lang } from "./i18n";
 import { isAllowed, restrictedText } from "./policy";
 import { cancelOrder, cancelWebOrder, ordersFor, pendingFor, pendingUnits, placeOrder, waitingFor } from "./orders";
 import { allowanceFor, describeLimit, orderedByScope } from "./limits";
@@ -48,11 +49,13 @@ app.use("*", sessionMiddleware);
 async function page(c: Ctx) {
   await ensureSchema(c.env.DB);
   const store = await loadStore(c.env.DB);
+  const lang = langOf(store?.info.language);
+  c.set("lang", lang);
   // A signed-in buyer's saved pick comes before this browser's cookie, so it follows them.
   const session = c.get("session");
   const saved = session ? await buyerTheme(c.env.DB, session.characterId) : null;
-  const theme = pickTheme(store?.info.theme ?? fallbackTheme, saved ?? getCookie(c, "theme"));
-  return { store, theme, session, flash: takeFlash(c), siteVersion: c.env.SITE_VERSION };
+  const theme = pickTheme(store?.info.theme ?? fallbackTheme, saved ?? getCookie(c, "theme"), lang);
+  return { store, lang, theme, session, flash: takeFlash(c), siteVersion: c.env.SITE_VERSION };
 }
 
 // A one-shot message travels in a short-lived cookie, never in the URL: nobody can craft a
@@ -76,6 +79,12 @@ function takeFlash(c: Ctx): Flash | null {
   return null;
 }
 
+/** The answer to a form without the session's token. */
+async function refused(c: Ctx): Promise<Response> {
+  await ensureSchema(c.env.DB);
+  return c.text(t(await storeLanguage(c.env.DB), "refused"), 403);
+}
+
 /** Reads the form and checks its token; null means the caller answers 403. */
 async function signedForm(c: Ctx): Promise<FormData | null> {
   const session = c.get("session");
@@ -88,11 +97,11 @@ async function signedForm(c: Ctx): Promise<FormData | null> {
 
 app.get("/", async (c) => {
   const { store, ...common } = await page(c);
-  const session = common.session;
+  const { session, lang } = common;
 
   if (!store?.catalogue)
-    return c.html(<Layout storeName="Store" active="none" {...common}>
-      <Message title="Not open yet" text="This site has not heard from its store's EVE Console yet. Once the store's web channel is switched on, the price list appears here." />
+    return c.html(<Layout storeName={t(lang, "storeFallback")} active="none" {...common}>
+      <Message title={t(lang, "notOpenTitle")} text={t(lang, "notOpenText")} />
     </Layout>);
 
   const allowed = session ? await isAllowed(c.env.DB, store.info, session) : false;
@@ -102,7 +111,7 @@ app.get("/", async (c) => {
     // session predates the check at sign-in — ends here, with the same refusal sign-in gives.
     if (session) return refuse(c, store, session.name);
     return c.html(<Layout storeName={store.info.name} active="catalogue" {...common}>
-      <Message title={store.info.name} text="This shop serves a list of buyers. Sign in with EVE to see whether you are on it." link={{ href: "/auth/login", label: "Sign in with EVE" }} />
+      <Message title={store.info.name} text={t(lang, "listOnlyText")} link={{ href: "/auth/login", label: t(lang, "signIn") }} />
     </Layout>);
   }
 
@@ -112,7 +121,7 @@ app.get("/", async (c) => {
     ? orderedByScope(limit, store.catalogue, await ordersFor(c.env.DB, session), await pendingFor(c.env.DB, session.characterId), session.characterId)
     : null;
   return c.html(<Layout storeName={store.info.name} active="catalogue" asOf={asOf(store)} {...common}>
-    <CataloguePage store={store.info} catalogue={store.catalogue} pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed}
+    <CataloguePage lang={lang} store={store.info} catalogue={store.catalogue} pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed}
                    limit={limit} taken={taken} banner={await bannerHash(c.env.DB)} />
   </Layout>);
 
@@ -123,7 +132,7 @@ async function refuse(c: Ctx, store: StoreState, characterName: string): Promise
   await logout(c);
   const { store: _s, session: _session, ...common } = await page(c);
   return c.html(<Layout storeName={store.info.name} active="none" {...common} session={null}>
-    <Message title="A restricted store" text={restrictedText(store.info.name, characterName)} />
+    <Message title={t(common.lang, "restrictedTitle")} text={tell(common.lang, restrictedText(store.info.name, characterName))} />
   </Layout>, 403);
 }
 
@@ -133,8 +142,8 @@ app.get("/orders", async (c) => {
   if (!session) return c.redirect("/auth/login?next=/orders");
   if (store && store.info.senderPolicy === "list" && !(await isAllowed(c.env.DB, store.info, session)))
     return refuse(c, store, session.name);
-  return c.html(<Layout storeName={store?.info.name ?? "Store"} active="orders" asOf={asOf(store)} {...common}>
-    <OrdersPage session={session} waiting={await waitingFor(c.env.DB, session.characterId)} orders={await ordersFor(c.env.DB, session)} />
+  return c.html(<Layout storeName={store?.info.name ?? t(common.lang, "storeFallback")} active="orders" asOf={asOf(store)} {...common}>
+    <OrdersPage lang={common.lang} session={session} waiting={await waitingFor(c.env.DB, session.characterId)} orders={await ordersFor(c.env.DB, session)} />
   </Layout>);
 });
 
@@ -144,11 +153,12 @@ app.post("/orders", async (c) => {
   const session = c.get("session");
   if (!session) return c.redirect("/auth/login");
   const form = await signedForm(c);
-  if (!form) return c.text("Refused.", 403);
+  if (!form) return refused(c);
 
   await ensureSchema(c.env.DB);
   const store = await loadStore(c.env.DB);
-  if (!store?.catalogue) { flash(c, "bad", "The price list is not available."); return c.redirect("/"); }
+  const lang = langOf(store?.info.language);
+  if (!store?.catalogue) { flash(c, "bad", t(lang, "priceListUnavailable")); return c.redirect("/"); }
   if (!(await isAllowed(c.env.DB, store.info, session))) return c.redirect("/");
 
   const typeId = Number(form.get("typeId"));
@@ -163,8 +173,8 @@ app.post("/orders", async (c) => {
     const a     = allowanceFor(limit, taken, typeId, item?.groupId);
     if (units > a.remaining) {
       flash(c, "bad", a.remaining === 0
-        ? `You have reached this store's limit for that item: ${describeLimit(limit)}.`
-        : `This store limits each buyer to ${describeLimit(limit)}; you may order ${a.remaining.toLocaleString("en-US")} more, not ${units.toLocaleString("en-US")}.`);
+        ? t(lang, "limitReachedFlash", { limit: describeLimit(lang, limit) })
+        : t(lang, "limitOverFlash", { limit: describeLimit(lang, limit), left: a.remaining, asked: units }));
       return c.redirect("/");
     }
   }
@@ -178,28 +188,30 @@ app.post("/orders", async (c) => {
 
 
   if (r.ok) {
-    flash(c, "good", "Order sent to the store. It is confirmed once the store's system has taken it, usually within a couple of minutes.");
+    flash(c, "good", t(lang, "orderSent"));
     return c.redirect("/orders");
   }
-  flash(c, "bad", r.reason);
+  flash(c, "bad", tell(lang, r.reason));
   return c.redirect("/");
 });
 
 app.post("/orders/:id/cancel", async (c) => {
   const session = c.get("session");
   if (!session) return c.redirect("/auth/login");
-  if (!(await signedForm(c))) return c.text("Refused.", 403);
+  if (!(await signedForm(c))) return refused(c);
   const r = await cancelOrder(c.env.DB, session, Number(c.req.param("id")));
-  if (r.ok) flash(c, "info", "Cancellation sent to the store."); else flash(c, "bad", r.reason);
+  const lang = await storeLanguage(c.env.DB);
+  if (r.ok) flash(c, "info", t(lang, "cancellationSent")); else flash(c, "bad", tell(lang, r.reason));
   return c.redirect("/orders");
 });
 
 app.post("/web-orders/:id/cancel", async (c) => {
   const session = c.get("session");
   if (!session) return c.redirect("/auth/login");
-  if (!(await signedForm(c))) return c.text("Refused.", 403);
+  if (!(await signedForm(c))) return refused(c);
   const r = await cancelWebOrder(c.env.DB, session, c.req.param("id"));
-  if (r.ok) flash(c, "info", "Order withdrawn."); else flash(c, "bad", r.reason);
+  const lang = await storeLanguage(c.env.DB);
+  if (r.ok) flash(c, "info", t(lang, "orderWithdrawn")); else flash(c, "bad", tell(lang, r.reason));
   return c.redirect("/orders");
 });
 
@@ -225,9 +237,8 @@ app.get("/auth/login", async (c) => {
   // EVE answer "client could not be found" for an id of undefined.
   if (!c.env.EVE_CLIENT_ID || !c.env.EVE_CLIENT_SECRET) {
     const { store, ...common } = await page(c);
-    return c.html(<Layout storeName={store?.info.name ?? "Store"} active="none" {...common}>
-      <Message title="Sign-in is not set up yet"
-               text="This site has no EVE application keys. The store's owner enters the application's Client ID and Secret Key in EVE Console (Stores, Config, EVE application), or sets them as the site's EVE_CLIENT_ID and EVE_CLIENT_SECRET secrets." />
+    return c.html(<Layout storeName={store?.info.name ?? t(common.lang, "storeFallback")} active="none" {...common}>
+      <Message title={t(common.lang, "ssoNotSetUpTitle")} text={t(common.lang, "ssoNotSetUpText")} />
     </Layout>, 503);
   }
   return beginLogin(c);
@@ -238,17 +249,19 @@ app.get("/auth/callback", async (c) => {
   const result = await finishLogin(c);
   if (result.ok) return c.redirect(result.next);
   const { store, ...common } = await page(c);
+  const lang = common.lang;
+  const storeName = store?.info.name ?? t(lang, "storeFallback");
   if (result.restricted)
-    return c.html(<Layout storeName={store?.info.name ?? "Store"} active="none" {...common}>
-      <Message title="A restricted store" text={result.reason} />
+    return c.html(<Layout storeName={storeName} active="none" {...common}>
+      <Message title={t(lang, "restrictedTitle")} text={tell(lang, result.reason)} />
     </Layout>, 403);
-  return c.html(<Layout storeName={store?.info.name ?? "Store"} active="none" {...common}>
-    <Message title="Sign-in did not complete" text={result.reason} link={{ href: "/auth/login", label: "Try again" }} />
+  return c.html(<Layout storeName={storeName} active="none" {...common}>
+    <Message title={t(lang, "ssoFailedTitle")} text={tell(lang, result.reason)} link={{ href: "/auth/login", label: t(lang, "tryAgain") }} />
   </Layout>, 400);
 });
 
 app.post("/auth/logout", async (c) => {
-  if (c.get("session") && !(await signedForm(c))) return c.text("Refused.", 403);
+  if (c.get("session") && !(await signedForm(c))) return refused(c);
   await logout(c);
   return c.redirect("/");
 });
@@ -257,13 +270,13 @@ app.onError((err, c) => {
   console.error(err);
   // The app shows the reason on its Stores screen; a buyer gets a plain page.
   if (c.req.path.startsWith("/api/")) return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
-  return c.text("Something went wrong on the site. The store's owner can see why in Cloudflare's logs.", 500);
+  return c.text(t(c.get("lang") ?? "en", "siteError"), 500);
 });
 
 
 function asOf(store: StoreState | null): string | null {
-  const t = store?.catalogue?.asOf ?? store?.pushedAt;
-  return t ? t.slice(0, 16).replace("T", " ") + " EVE time" : null;
+  const at = store?.catalogue?.asOf ?? store?.pushedAt;
+  return at ? at.slice(0, 16).replace("T", " ") : null;
 }
 
 /** Before the first push there is no theme yet; the app's own dark palette stands in. */

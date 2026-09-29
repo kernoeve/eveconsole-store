@@ -1,17 +1,20 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
 import { raw } from "hono/html";
 import type { Session } from "../env";
-
+import { t, type Lang } from "../i18n";
 import { baseStyle, themeStyle, type ThemePick } from "../theme";
 
 export interface Flash { kind: "good" | "bad" | "info"; text: string }
 
 export interface LayoutProps {
   storeName: string;
+  /** The store's language: the page's words, and its lang attribute. */
+  lang: Lang;
   theme: ThemePick;
   session: Session | null;
   active: "catalogue" | "orders" | "none";
   flash?: Flash | null;
+  /** When the app last reported stock and prices, "2026-09-29 20:00" in EVE time. */
   asOf?: string | null;
   siteVersion?: string;
 }
@@ -21,7 +24,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
   // bottom margin of 1em, which is why the header's buttons sat higher than the name.
   <>
     {raw("<!DOCTYPE html>")}
-  <html lang="en" data-theme={p.theme.explicit ? p.theme.chosen.key : undefined}>
+  <html lang={p.lang} data-theme={p.theme.explicit ? p.theme.chosen.key : undefined}>
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -34,18 +37,18 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
         <div class="wrap">
           <h1>{p.storeName}</h1>
           <nav>
-            <a href="/" class={p.active === "catalogue" ? "active" : ""}>Price list</a>
-            {p.session && <a href="/orders" class={p.active === "orders" ? "active" : ""}>My orders</a>}
+            <a href="/" class={p.active === "catalogue" ? "active" : ""}>{t(p.lang, "navPriceList")}</a>
+            {p.session && <a href="/orders" class={p.active === "orders" ? "active" : ""}>{t(p.lang, "navMyOrders")}</a>}
           </nav>
           <div class="who">
             {/* The themes the store offers, as the app's own theme menu: a dropdown that applies
                 itself; without script the button beside it does. */}
             {p.theme.options.length > 1 && (
               <form method="post" action="/theme">
-                <select name="to" aria-label="Theme" onchange="this.form.submit()">
+                <select name="to" aria-label={t(p.lang, "themeLabel")} onchange="this.form.submit()">
                   {p.theme.options.map((o) => <option value={o.key} selected={o.key === p.theme.chosen.key || undefined}>{o.name}</option>)}
                 </select>
-                <noscript><button class="link" type="submit">Apply</button></noscript>
+                <noscript><button class="link" type="submit">{t(p.lang, "themeApply")}</button></noscript>
               </form>
             )}
             {p.session ? (
@@ -53,11 +56,11 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
                 <span>{p.session.name}</span>
                 <form method="post" action="/auth/logout">
                   <input type="hidden" name="_csrf" value={p.session.csrf} />
-                  <button class="link" type="submit">Sign out</button>
+                  <button class="link" type="submit">{t(p.lang, "signOut")}</button>
                 </form>
               </>
             ) : (
-              <a href="/auth/login">Sign in with EVE</a>
+              <a href="/auth/login">{t(p.lang, "signIn")}</a>
             )}
           </div>
         </div>
@@ -66,8 +69,8 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = (p) => (
         {p.flash && <div class={`flash ${p.flash.kind}`}>{p.flash.text}</div>}
         {p.children}
         <p class="faint" style="margin-top:24px">
-          {p.asOf ? `Stock and prices as the store's system last reported them, ${p.asOf}. ` : ""}
-          EVE Console store{p.siteVersion ? ` ${p.siteVersion}` : ""}.
+          {p.asOf ? t(p.lang, "footerAsOf", { time: p.asOf }) + " " : ""}
+          {p.siteVersion ? t(p.lang, "footerSite", { version: p.siteVersion }) : t(p.lang, "footerSiteNoVersion")}
         </p>
       </main>
     </body>

@@ -5,11 +5,8 @@ import type { WebOrder } from "../orders";
 import { allowanceFor, allowanceWords, describeLimit } from "../limits";
 import { raw } from "hono/html";
 import { renderBlurb } from "../markup";
+import { formatIsk, formatNumber, t, template, type Lang } from "../i18n";
 
-
-const isk = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-export const formatIsk = (n: number) => `${isk.format(n)} ISK`;
-export const formatUnits = (n: number) => isk.format(n);
 
 function iconUrl(typeId: number): string {
   return `https://images.evetech.net/types/${typeId}/icon?size=64`;
@@ -26,9 +23,13 @@ const Item: FC<{ typeId: number; name: string; typeName?: string; group?: string
   </div>
 );
 
+/** One line of an order, "2 × Rifter". */
+const orderLine = (lang: Lang, units: number, name: string) => t(lang, "orderLine", { units, name });
+
 // ── The price list ────────────────────────────────────────────────────────
 
 export interface CatalogueProps {
+  lang: Lang;
   store: StoreInfo;
   catalogue: Catalogue;
   /** Units of each type in web orders the store has not yet confirmed: taken off "available". */
@@ -47,11 +48,11 @@ function availableNow(i: CatalogueItem, pending: Map<number, number>): number {
   return Math.max(0, i.inStock - i.reserved - (pending.get(i.typeId) ?? 0));
 }
 
-function stateOf(i: CatalogueItem, available: number): { cls: string; text: string } {
+function stateOf(lang: Lang, i: CatalogueItem, available: number): { cls: string; text: string } {
   if (i.unitPrice == null) return { cls: "muted", text: "" };
-  if (available > 0) return { cls: "good", text: `${formatUnits(available)} available now` };
-  if (i.inBuild > 0) return { cls: "warn", text: `${formatUnits(i.inBuild)} in build` };
-  return { cls: "muted", text: "Built to order" };
+  if (available > 0) return { cls: "good", text: t(lang, "stateAvailable", { n: available }) };
+  if (i.inBuild > 0) return { cls: "warn", text: t(lang, "stateInBuild", { n: i.inBuild }) };
+  return { cls: "muted", text: t(lang, "stateBuiltToOrder") };
 }
 
 /** The owner's words, as HTML. With block tags the owner has done the layout; without them a
@@ -63,6 +64,7 @@ const Blurb: FC<{ text: string }> = ({ text }) => {
 };
 
 export const CataloguePage: FC<CatalogueProps> = (p) => {
+  const lang = p.lang;
   const c = p.catalogue;
   const canOrder = !!p.session && p.allowed;
   // The mail question is only worth asking when the store has a mailbox and writes from it.
@@ -80,14 +82,14 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
           words above are the only place such things are said. */}
 
       {!p.session && (
-        <div class="flash info">Sign in with EVE to place an order. Prices are as listed at the moment you order.</div>
+        <div class="flash info">{t(lang, "signInToOrder")}</div>
       )}
       {p.session && !p.allowed && (
-        <div class="flash bad">This shop serves a list of buyers, and {p.session.name} is not on it.</div>
+        <div class="flash bad">{t(lang, "notOnList", { name: p.session.name })}</div>
       )}
       {p.limit && (
         <p class="note" style="margin-top:12px">
-          This store limits each buyer to {describeLimit(p.limit)}. What you may no longer order is greyed out.
+          {t(lang, "limitNote", { limit: describeLimit(lang, p.limit) })}
         </p>
       )}
 
@@ -95,13 +97,13 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
         <table class="grid">
           <thead>
             <tr>
-              <th>Item</th>
-              <th class="num">Price</th>
-              <th>Availability</th>
-              {showColumns.stock && <th class="num optional">In stock</th>}
-              {showColumns.build && <th class="num optional">In build</th>}
-              {showColumns.reserved && <th class="num optional">Reserved</th>}
-              {canOrder && <th class="right">Order</th>}
+              <th>{t(lang, "colItem")}</th>
+              <th class="num">{t(lang, "colPrice")}</th>
+              <th>{t(lang, "colAvailability")}</th>
+              {showColumns.stock && <th class="num optional">{t(lang, "colInStock")}</th>}
+              {showColumns.build && <th class="num optional">{t(lang, "colInBuild")}</th>}
+              {showColumns.reserved && <th class="num optional">{t(lang, "colReserved")}</th>}
+              {canOrder && <th class="right">{t(lang, "colOrderAction")}</th>}
             </tr>
           </thead>
           <tbody>
@@ -113,7 +115,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                 </tr>
                 {s.items.map((i) => {
                   const available = availableNow(i, p.pending);
-                  const st = stateOf(i, available);
+                  const st = stateOf(lang, i, available);
                   // Against the store's limit, when it has one and the buyer is known.
                   const a = p.limit && p.taken ? allowanceFor(p.limit, p.taken, i.typeId, i.groupId) : null;
                   const blocked = a !== null && a.remaining === 0 && i.unitPrice != null;
@@ -124,29 +126,29 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                   return (
                     <tr style={rowStyle} class={blocked ? "ineligible" : undefined}>
                       <td><Item typeId={i.typeId} name={i.name} group={i.groupName} /></td>
-                      <td class="num">{i.unitPrice != null ? formatIsk(i.unitPrice) : <span class="dim">not for sale</span>}</td>
+                      <td class="num">{i.unitPrice != null ? formatIsk(lang, i.unitPrice) : <span class="dim">{t(lang, "notForSale")}</span>}</td>
                       <td>
                         {blocked ? (
-                          <span class="state muted">Limit reached</span>
+                          <span class="state muted">{t(lang, "limitReached")}</span>
                         ) : (
                           <>
                             {st.text ? <span class={`state ${st.cls}`}>{st.text}</span> : null}
                             {c.showCompletionDate && i.earliestJobEnd && available === 0 && i.inBuild > 0 && (
-                              <span class="dim"> · earliest {i.earliestJobEnd.slice(0, 10)}</span>
+                              <span class="dim"> · {t(lang, "earliest", { date: i.earliestJobEnd.slice(0, 10) })}</span>
                             )}
                           </>
                         )}
                       </td>
 
-                      {showColumns.stock && <td class="num optional">{formatUnits(i.inStock)}</td>}
-                      {showColumns.build && <td class="num optional">{formatUnits(i.inBuild)}</td>}
-                      {showColumns.reserved && <td class="num optional">{formatUnits(i.reserved)}</td>}
+                      {showColumns.stock && <td class="num optional">{formatNumber(lang, i.inStock)}</td>}
+                      {showColumns.build && <td class="num optional">{formatNumber(lang, i.inBuild)}</td>}
+                      {showColumns.reserved && <td class="num optional">{formatNumber(lang, i.reserved)}</td>}
                       {canOrder && (
                         <td>
                           {i.unitPrice != null && !blocked ? (
                             <form class="order" method="post" action="/orders"
                                   data-name={i.name} data-price={String(i.unitPrice)} data-icon={iconUrl(i.typeId)}
-                                  data-limit={a ? allowanceWords(p.limit!, a) : undefined}>
+                                  data-limit={a ? allowanceWords(lang, p.limit!, a) : undefined}>
                               <input type="hidden" name="_csrf" value={p.session!.csrf} />
                               <input type="hidden" name="typeId" value={String(i.typeId)} />
                               {/* One unit each and the box is fixed at 1 (read-only, so it still posts); a
@@ -154,7 +156,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                               {p.limit && p.limit.units === 1
                                 ? <input type="number" name="units" class="fixed" min="1" max="1" value="1" readonly required />
                                 : <input type="number" name="units" min="1" max={String(a ? Math.min(10_000, a.remaining) : 10_000)} value="1" required />}
-                              <button type="submit">Order</button>
+                              <button type="submit">{t(lang, "orderButton")}</button>
                             </form>
                           ) : null}
 
@@ -167,15 +169,11 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
             ))}
           </tbody>
         </table>
-        {c.sections.every((s) => s.items.length === 0) && <div class="empty">Nothing on the price list yet.</div>}
+        {c.sections.every((s) => s.items.length === 0) && <div class="empty">{t(lang, "emptyList")}</div>}
       </div>
-      {canOrder && <ConfirmDialog csrf={p.session!.csrf} mailbox={mailbox} />}
-      {canOrder && <script dangerouslySetInnerHTML={{ __html: confirmScript }} />}
-      <p class="faint">
-
-        Availability is as the store's system last reported it. An order is confirmed once the
-        store has taken it, usually within a couple of minutes; until then it is listed as sent.
-      </p>
+      {canOrder && <ConfirmDialog lang={lang} csrf={p.session!.csrf} mailbox={mailbox} />}
+      {canOrder && <script dangerouslySetInnerHTML={{ __html: confirmScript(lang) }} />}
+      <p class="faint">{t(lang, "availabilityNote")}</p>
     </>
   );
 };
@@ -185,21 +183,21 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
  * has a mailbox — whether to be kept posted by EVE mail. The row's own form still posts on its
  * own where the script does not run, so nothing depends on it.
  */
-const ConfirmDialog: FC<{ csrf: string; mailbox: boolean }> = (p) => (
+const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean }> = (p) => (
   <dialog id="confirm" class="confirm">
     <form method="post" action="/orders">
       <input type="hidden" name="_csrf" value={p.csrf} />
       <input type="hidden" name="typeId" value="" />
       <input type="hidden" name="units" value="" />
-      <h2>Confirm your order</h2>
+      <h2>{t(p.lang, "confirmTitle")}</h2>
       <div class="item">
         <img data-f="icon" src="" alt="" width="32" height="32" />
         <div data-f="name"></div>
       </div>
       <table class="facts">
-        <tr><th>Units</th><td data-f="units"></td></tr>
-        <tr><th>Price each</th><td data-f="price"></td></tr>
-        <tr><th>Total</th><td class="total" data-f="total"></td></tr>
+        <tr><th>{t(p.lang, "units")}</th><td data-f="units"></td></tr>
+        <tr><th>{t(p.lang, "priceEach")}</th><td data-f="price"></td></tr>
+        <tr><th>{t(p.lang, "total")}</th><td class="total" data-f="total"></td></tr>
       </table>
       <p class="note limit" data-f="limit" hidden></p>
 
@@ -207,17 +205,17 @@ const ConfirmDialog: FC<{ csrf: string; mailbox: boolean }> = (p) => (
         <label class="check">
           <input type="hidden" name="mailUpdatesAsked" value="1" />
           <input type="checkbox" name="mailUpdates" value="1" checked />
-          Keep me posted by EVE mail as this order moves
+          {t(p.lang, "mailUpdatesAsk")}
         </label>
       )}
-      <p class="note">The price is as listed now. The store confirms the order within a couple of minutes, and it can be cancelled from My orders until it is contracted.</p>
+      <p class="note">{t(p.lang, "confirmNote", { myOrders: t(p.lang, "navMyOrders") })}</p>
       <div class="actions">
-        <button type="button" class="link" data-close>Cancel</button>
-        <button type="submit" class="primary">Place order</button>
+        <button type="button" class="link" data-close>{t(p.lang, "dialogCancel")}</button>
+        <button type="submit" class="primary">{t(p.lang, "placeOrder")}</button>
       </div>
       {/* Shown from the click until the next page arrives, which takes a few seconds; the
           buttons are disabled meanwhile so a second click cannot place a second order. */}
-      <div class="busy" hidden><span class="hourglass" aria-hidden="true">⌛</span> Placing your order… this takes a few seconds.</div>
+      <div class="busy" hidden><span class="hourglass" aria-hidden="true">⌛</span> {t(p.lang, "placingOrder")}</div>
     </form>
   </dialog>
 );
@@ -246,11 +244,18 @@ const busyScript = `
   });
 `;
 
-const confirmScript = `
+/** A value for a script in the page: JSON, with "<" escaped so nothing in it can end the script. */
+const scriptValue = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
+
+/** Fills the dialog from the row's form. Numbers and amounts come out as the page's own do: in
+ * the store's language, an amount worded by its catalogue's "{amount} ISK". */
+const confirmScript = (lang: Lang) => `
 (function () {
   var dlg = document.getElementById('confirm');
   if (!dlg || typeof dlg.showModal !== 'function') return;
-  var fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+  var fmt = new Intl.NumberFormat(${scriptValue(lang)}, { maximumFractionDigits: 0 });
+  var iskWords = ${scriptValue(template(lang, "iskAmount"))};
+  var isk = function (n) { return iskWords.replace('{amount}', fmt.format(n)); };
   var field = function (k) { return dlg.querySelector('[data-f=' + k + ']'); };
   document.querySelectorAll('form.order').forEach(function (form) {
     form.addEventListener('submit', function (e) {
@@ -261,8 +266,8 @@ const confirmScript = `
       field('name').textContent = form.dataset.name;
       field('icon').src = form.dataset.icon;
       field('units').textContent = fmt.format(units);
-      field('price').textContent = fmt.format(price) + ' ISK';
-      field('total').textContent = fmt.format(units * price) + ' ISK';
+      field('price').textContent = isk(price);
+      field('total').textContent = isk(units * price);
       field('limit').textContent = form.dataset.limit || '';
       field('limit').hidden = !form.dataset.limit;
       dlg.querySelector('input[name=typeId]').value = form.querySelector('input[name=typeId]').value;
@@ -280,11 +285,11 @@ ${busyScript}
  * state, and a word about a contract already made out. The row's own form still posts on its
  * own where the script does not run.
  */
-const CancelDialog: FC<{ csrf: string }> = (p) => (
+const CancelDialog: FC<{ lang: Lang; csrf: string }> = (p) => (
   <dialog id="cancel" class="confirm">
     <form method="post" action="">
       <input type="hidden" name="_csrf" value={p.csrf} />
-      <h2>Cancel this order?</h2>
+      <h2>{t(p.lang, "cancelTitle")}</h2>
       <div class="item">
         <div>
           <div data-f="what"></div>
@@ -292,16 +297,16 @@ const CancelDialog: FC<{ csrf: string }> = (p) => (
         </div>
       </div>
       <table class="facts">
-        <tr><th>Total</th><td data-f="total"></td></tr>
-        <tr><th>State</th><td data-f="state"></td></tr>
+        <tr><th>{t(p.lang, "total")}</th><td data-f="total"></td></tr>
+        <tr><th>{t(p.lang, "state")}</th><td data-f="state"></td></tr>
       </table>
-      <p class="note" data-f="contract" hidden>A contract is already made out for it. Cancelling tells the store to withdraw it; the contract itself stays until they remove it in game.</p>
-      <p class="note">The store hears of it at its next check-in, usually within a couple of minutes.</p>
+      <p class="note" data-f="contract" hidden>{t(p.lang, "cancelContractNote")}</p>
+      <p class="note">{t(p.lang, "cancelHeardNote")}</p>
       <div class="actions">
-        <button type="button" class="link" data-close>Keep the order</button>
-        <button type="submit" class="bad">Cancel the order</button>
+        <button type="button" class="link" data-close>{t(p.lang, "keepOrder")}</button>
+        <button type="submit" class="bad">{t(p.lang, "cancelOrder")}</button>
       </div>
-      <div class="busy" hidden><span class="hourglass" aria-hidden="true">⌛</span> Cancelling… this takes a few seconds.</div>
+      <div class="busy" hidden><span class="hourglass" aria-hidden="true">⌛</span> {t(p.lang, "cancelling")}</div>
     </form>
   </dialog>
 );
@@ -330,60 +335,70 @@ ${busyScript}
 // ── The buyer's orders ────────────────────────────────────────────────────
 
 export interface OrdersProps {
+  lang: Lang;
   session: Session;
   waiting: WebOrder[];
   orders: OrderRow[];
 }
 
-function orderState(o: OrderRow): { cls: string; text: string } {
+function orderState(lang: Lang, o: OrderRow): { cls: string; text: string } {
   switch (o.status) {
-    case "completed": return { cls: "good", text: "Delivered" };
-    case "canceled":  return { cls: "bad",  text: "Cancelled" };
+    case "completed": return { cls: "good", text: t(lang, "stateDelivered") };
+    case "canceled":  return { cls: "bad",  text: t(lang, "stateCancelled") };
     default:
       switch (o.fulfilment) {
-        case "contract": return { cls: "info", text: o.contractId ? `Contract ${o.contractId} — accept it in game` : "Contract issued" };
-        case "stock":    return { cls: "good", text: o.estimatedDate ? `In stock · expected ${o.estimatedDate}` : "In stock" };
-        case "job":      return { cls: "warn", text: o.estimatedDate ? `Being built · expected ${o.estimatedDate}` : "Being built" };
-        default:         return { cls: "muted", text: "Confirmed · waiting for a build slot" };
+        case "contract": return { cls: "info", text: o.contractId ? t(lang, "stateContract", { id: String(o.contractId) }) : t(lang, "stateContractIssued") };
+        case "stock":    return { cls: "good", text: o.estimatedDate ? t(lang, "stateInStockBy", { date: o.estimatedDate }) : t(lang, "stateInStock") };
+        case "job":      return { cls: "warn", text: o.estimatedDate ? t(lang, "stateBuildingBy", { date: o.estimatedDate }) : t(lang, "stateBuilding") };
+        default:         return { cls: "muted", text: t(lang, "stateWaitingSlot") };
       }
   }
 }
 
-function webState(w: WebOrder): { cls: string; text: string } {
+function webState(lang: Lang, w: WebOrder): { cls: string; text: string } {
   switch (w.state) {
-    case "submitted":        return { cls: "muted", text: "Sent to the store — not confirmed yet" };
-    case "review":           return { cls: "warn",  text: "The store is looking at it" };
-    case "rejected":         return { cls: "bad",   text: w.reason ? `Declined — ${w.reason}` : "Declined" };
-    case "cancelled":        return { cls: "muted", text: "Withdrawn" };
+    case "submitted":        return { cls: "muted", text: t(lang, "webSubmitted") };
+    case "review":           return { cls: "warn",  text: t(lang, "webReview") };
+    case "rejected":         return { cls: "bad",   text: w.reason ? t(lang, "webDeclinedBecause", { reason: w.reason }) : t(lang, "webDeclined") };
+    case "cancelled":        return { cls: "muted", text: t(lang, "webWithdrawn") };
     default:                 return { cls: "muted", text: w.state };
   }
 }
 
-export const OrdersPage: FC<OrdersProps> = (p) => (
+/** How the order reached the store. */
+function via(lang: Lang, o: OrderRow): string {
+  return o.channel === "web" ? t(lang, "viaWebsite") : o.channel === "mail" ? t(lang, "viaMail") : t(lang, "viaStore");
+}
+
+export const OrdersPage: FC<OrdersProps> = (p) => {
+  const lang = p.lang;
+  const typeName = (o: OrderRow) => o.typeName ?? t(lang, "typeFallback", { id: String(o.typeId) });
+  return (
   <>
     {p.waiting.length > 0 && (
       <div class="panel">
-        <h2>Waiting on the store</h2>
+        <h2>{t(lang, "waitingTitle")}</h2>
         <table class="grid">
           <thead>
-            <tr><th>Placed</th><th>Items</th><th class="num">Total</th><th>State</th><th></th></tr>
+            <tr><th>{t(lang, "colPlaced")}</th><th>{t(lang, "colItems")}</th><th class="num">{t(lang, "total")}</th><th>{t(lang, "state")}</th><th></th></tr>
           </thead>
           <tbody>
             {p.waiting.map((w) => {
-              const st = webState(w);
+              const st = webState(lang, w);
+              const lines = w.lines.map((l) => orderLine(lang, l.units, l.name)).join(", ");
               return (
                 <tr>
                   <td class="num">{w.createdAt.slice(0, 16).replace("T", " ")}</td>
-                  <td>{w.lines.map((l) => `${formatUnits(l.units)} × ${l.name}`).join(", ")}</td>
-                  <td class="num">{formatIsk(w.total)}</td>
+                  <td>{lines}</td>
+                  <td class="num">{formatIsk(lang, w.total)}</td>
                   <td><span class={`state ${st.cls}`}>{st.text}</span></td>
                   <td class="right">
                     {(w.state === "submitted" || w.state === "review") && (
                       <form class="cancel" method="post" action={`/web-orders/${w.id}/cancel`}
-                            data-what={w.lines.map((l) => `${formatUnits(l.units)} × ${l.name}`).join(", ")}
-                            data-ref="Not yet confirmed by the store" data-total={formatIsk(w.total)} data-state={st.text} data-contract="0">
+                            data-what={lines}
+                            data-ref={t(lang, "notYetConfirmed")} data-total={formatIsk(lang, w.total)} data-state={st.text} data-contract="0">
                         <input type="hidden" name="_csrf" value={p.session.csrf} />
-                        <button class="bad" type="submit">Cancel</button>
+                        <button class="bad" type="submit">{t(lang, "cancelOrderButton")}</button>
                       </form>
 
                     )}
@@ -396,38 +411,38 @@ export const OrdersPage: FC<OrdersProps> = (p) => (
       </div>
     )}
     <div class="panel">
-      <h2>Your orders</h2>
+      <h2>{t(lang, "yourOrders")}</h2>
       {p.orders.length === 0 ? (
-        <div class="empty">No orders in your name yet.</div>
+        <div class="empty">{t(lang, "noOrders")}</div>
       ) : (
         <table class="grid">
           <thead>
             <tr>
-              <th>Placed</th><th>Order</th><th>Item</th><th class="num">Units</th><th class="num">Total</th>
-              <th>State</th><th class="optional">Via</th><th></th>
+              <th>{t(lang, "colPlaced")}</th><th>{t(lang, "colOrderRef")}</th><th>{t(lang, "colItem")}</th><th class="num">{t(lang, "units")}</th><th class="num">{t(lang, "total")}</th>
+              <th>{t(lang, "state")}</th><th class="optional">{t(lang, "colVia")}</th><th></th>
             </tr>
           </thead>
           <tbody>
             {p.orders.map((o) => {
-              const st = orderState(o);
+              const st = orderState(lang, o);
               return (
                 <tr>
                   <td class="num">{o.createdAt.slice(0, 10)}</td>
                   <td>{o.ref}</td>
-                  <td><Item typeId={o.typeId} name={o.typeName ?? `Type ${o.typeId}`} /></td>
-                  <td class="num">{formatUnits(o.units)}</td>
-                  <td class="num">{formatIsk(o.totalPrice)}</td>
+                  <td><Item typeId={o.typeId} name={typeName(o)} /></td>
+                  <td class="num">{formatNumber(lang, o.units)}</td>
+                  <td class="num">{formatIsk(lang, o.totalPrice)}</td>
                   <td><span class={`state ${st.cls}`}>{st.text}</span></td>
-                  <td class="optional dim">{o.channel === "web" ? "website" : o.channel === "mail" ? "EVE mail" : "the store"}</td>
+                  <td class="optional dim">{via(lang, o)}</td>
 
                   <td class="right">
                     {o.status === "pending" && (
                       <form class="cancel" method="post" action={`/orders/${o.id}/cancel`}
-                            data-what={`${formatUnits(o.units)} × ${o.typeName ?? `Type ${o.typeId}`}`}
-                            data-ref={`Order ${o.ref}`} data-total={formatIsk(o.totalPrice)} data-state={st.text}
+                            data-what={orderLine(lang, o.units, typeName(o))}
+                            data-ref={t(lang, "orderRef", { ref: o.ref })} data-total={formatIsk(lang, o.totalPrice)} data-state={st.text}
                             data-contract={o.contractId ? "1" : "0"}>
                         <input type="hidden" name="_csrf" value={p.session.csrf} />
-                        <button class="bad" type="submit">Cancel</button>
+                        <button class="bad" type="submit">{t(lang, "cancelOrderButton")}</button>
                       </form>
 
                     )}
@@ -438,13 +453,10 @@ export const OrdersPage: FC<OrdersProps> = (p) => (
           </tbody>
         </table>
       )}
-      <p class="faint">
-        Cancelling an order with a contract already made out tells the store to withdraw it; the
-        contract itself is theirs to remove in game.
-      </p>
+      <p class="faint">{t(lang, "cancelledContractNote")}</p>
     </div>
-    <CancelDialog csrf={p.session.csrf} />
+    <CancelDialog lang={lang} csrf={p.session.csrf} />
     <script dangerouslySetInnerHTML={{ __html: cancelScript }} />
   </>
-);
-
+  );
+};

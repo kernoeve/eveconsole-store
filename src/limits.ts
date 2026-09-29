@@ -7,6 +7,7 @@
 // is still confirming the first. The app checks again when it books; this is the shop window
 // refusing what would be refused anyway.
 
+import { t, type Lang } from "./i18n";
 import type { Catalogue, Limit, OrderRow } from "./protocol";
 import type { WebOrder } from "./orders";
 
@@ -22,28 +23,31 @@ export function periodStart(limit: Limit, now = new Date()): Date | null {
   }
 }
 
-export function scopeWords(limit: Limit): string {
+export function scopeWords(lang: Lang, limit: Limit): string {
   switch (limit.scope) {
-    case "group": return "of each item group";
-    case "store": return "from this store";
-    default:      return "of each item";
+    case "group": return t(lang, "scopeGroup");
+    case "store": return t(lang, "scopeStore");
+    default:      return t(lang, "scopeType");
   }
 }
 
-export function periodWords(limit: Limit): string {
+export function periodWords(lang: Lang, limit: Limit): string {
   const n = Math.max(1, limit.count);
   switch (limit.period) {
-    case "days":   return n === 1 ? "per day" : `per ${n} days`;
-    case "months": return n === 1 ? "per month" : `per ${n} months`;
-    case "years":  return n === 1 ? "per year" : `per ${n} years`;
-    default:       return "ever";
+    case "days":   return t(lang, "periodDays", { n });
+    case "months": return t(lang, "periodMonths", { n });
+    case "years":  return t(lang, "periodYears", { n });
+    default:       return t(lang, "periodEver");
   }
 }
 
-/** "1 unit of each item ever" */
-export function describeLimit(limit: Limit): string {
-  const units = Math.max(1, limit.units);
-  return `${units.toLocaleString("en-US")} ${units === 1 ? "unit" : "units"} ${scopeWords(limit)} ${periodWords(limit)}`;
+/** "1 unit of each item ever", in the store's language. */
+export function describeLimit(lang: Lang, limit: Limit): string {
+  return t(lang, "limitPhrase", {
+    units: t(lang, "limitUnits", { n: Math.max(1, limit.units) }),
+    scope: scopeWords(lang, limit),
+    period: periodWords(lang, limit),
+  });
 }
 
 /** The key one order line counts against: the type, its group, or the store as a whole. */
@@ -90,9 +94,10 @@ export function allowanceFor(limit: Limit, taken: Map<string, number>, typeId: n
 }
 
 /** The sentence the order dialog shows. */
-export function allowanceWords(limit: Limit, a: Allowance): string {
-  const limitWords = `This store limits each buyer to ${describeLimit(limit)}.`;
-  return a.ordered === 0
-    ? `${limitWords} You have not ordered any yet.`
-    : `${limitWords} You have ordered ${a.ordered.toLocaleString("en-US")} so far${a.remaining > 0 ? `, so ${a.remaining.toLocaleString("en-US")} more` : ""}.`;
+export function allowanceWords(lang: Lang, limit: Limit, a: Allowance): string {
+  const words = describeLimit(lang, limit);
+  if (a.ordered === 0) return t(lang, "allowanceNone", { limit: words });
+  return a.remaining > 0
+    ? t(lang, "allowanceSome", { limit: words, ordered: a.ordered, left: a.remaining })
+    : t(lang, "allowanceAll", { limit: words, ordered: a.ordered });
 }

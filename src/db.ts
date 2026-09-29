@@ -6,6 +6,7 @@
 // and there is no separate migration command to forget.
 
 import { randomToken } from "./crypto";
+import { langOf, type Lang } from "./i18n";
 import type { Catalogue, StoreInfo } from "./protocol";
 
 export const SCHEMA_VERSION = 4;
@@ -144,6 +145,14 @@ export async function loadStore(db: D1Database): Promise<StoreState | null> {
 }
 
 export const now = () => new Date().toISOString();
+
+/** The store's language as the app last pushed it, without reading the catalogue: for a reply
+ * that needs only the words. English before the first push. */
+export async function storeLanguage(db: D1Database): Promise<Lang> {
+  const row = await db.prepare(`SELECT json_extract(json, '$.language') AS language FROM store WHERE id = 1`)
+    .first<{ language: string | null }>();
+  return langOf(row?.language);
+}
 
 /** The hash of the banner the site holds, or "" without one. */
 export async function bannerHash(db: D1Database): Promise<string> {

@@ -1,3 +1,5 @@
+import type { Lang } from "./i18n";
+
 export interface Bindings {
   DB: D1Database;
   /** Shared with EVE Console; the HMAC key for every sync call. Never sent, never logged. */
@@ -19,6 +21,8 @@ export interface Session {
 
 export type Variables = {
   session: Session | null;
+  /** The store's language, once a page has loaded the store: what an error page is worded in. */
+  lang: Lang | undefined;
 };
 
 export type AppEnv = { Bindings: Bindings; Variables: Variables };

@@ -32,6 +32,9 @@ export interface SyncRequest {
 
 export interface StoreInfo {
   name: string;
+  /** The language the store speaks to its buyers, as the app's code ("en", "ru", "zh-Hans"): the
+   * site words every page in it. Absent from an older app, which means English. */
+  language?: string;
   blurb?: string;
   characterName?: string;
   pickup?: string;

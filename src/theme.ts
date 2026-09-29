@@ -7,6 +7,7 @@
 // switch, in which case the buyer's own toggle wins and, before they have toggled, their
 // system preference does.
 
+import { t, type Lang } from "./i18n";
 import type { Theme } from "./protocol";
 
 export type Variant = "dark" | "light";
@@ -28,21 +29,23 @@ export interface ThemePick {
 
 const family = (key: string) => key.replace(/-(dark|light)$/, "");
 
-/** The themes on offer: the list the app pushed, or the dark/light pair an older app pushed. */
-export function themeOptions(theme: Theme): ThemeChoice[] {
+/** The themes on offer: the list the app pushed, or the dark/light pair an older app pushed,
+ * named in the store's language. */
+export function themeOptions(theme: Theme, lang: Lang = "en"): ThemeChoice[] {
   if (theme.themes && theme.themes.length > 0)
     return theme.themes.map((t) => ({ key: t.key, name: t.name, base: t.base === "light" ? "light" : "dark", tokens: t.tokens ?? {} }));
   const own: Variant = theme.default === "light" ? "light" : "dark";
   const other: Variant = own === "dark" ? "light" : "dark";
-  const options: ThemeChoice[] = [{ key: own, name: own === "dark" ? "Dark" : "Light", base: own, tokens: theme.variants[own] ?? {} }];
+  const name = (v: Variant) => t(lang, v === "dark" ? "themeDark" : "themeLight");
+  const options: ThemeChoice[] = [{ key: own, name: name(own), base: own, tokens: theme.variants[own] ?? {} }];
   if (theme.buyerMaySwitch && theme.variants[other])
-    options.push({ key: other, name: other === "dark" ? "Dark" : "Light", base: other, tokens: theme.variants[other] });
+    options.push({ key: other, name: name(other), base: other, tokens: theme.variants[other] });
   return options;
 }
 
 /** What a buyer with this cookie sees: their pick when it is still on offer, else the store's own. */
-export function pickTheme(theme: Theme, cookie: string | undefined): ThemePick {
-  const options = themeOptions(theme);
+export function pickTheme(theme: Theme, cookie: string | undefined, lang: Lang = "en"): ThemePick {
+  const options = themeOptions(theme, lang);
   const own = options[0];
   const picked = !cookie ? undefined
     : options.find((o) => o.key === cookie)
@@ -142,6 +145,9 @@ table.grid th {
   text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
   color: var(--text-faint); padding: 6px 8px; border-bottom: 1px solid var(--border-default);
 }
+/* Chinese, Japanese and Korean have no capitals for the spacing to set off, and their characters
+   need the pixel more than Latin ones: headings a size up, unspaced. */
+:is(:lang(ja), :lang(ko), :lang(zh)) table.grid th { font-size: 11px; letter-spacing: 0; }
 table.grid td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
 table.grid tr:hover td { background: var(--surface-hover); }
 table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }

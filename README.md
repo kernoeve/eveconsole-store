@@ -5,6 +5,11 @@ Buyers sign in with EVE SSO, see the store's price list with what is in stock, i
 reserved, place orders and follow them. The app pushes the site what it may show and collects
 what buyers did; nothing on the site reaches the app's database.
 
+The site speaks the store's language, the one its owner picks in EVE Console: English, German,
+Spanish, French, Japanese, Korean, Russian or Simplified Chinese, numbers written the way that
+language writes them. The words live in `src/messages/`, one file per language, checked against
+the English by `test/i18n.test.ts`.
+
 One store is one site: a Cloudflare Worker with a D1 database, on your own Cloudflare account.
 The free tier covers a shop many times over.
 

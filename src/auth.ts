@@ -12,6 +12,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { AppEnv, Session } from "./env";
 import { base64url, base64urlDecode, randomToken, sha256Hex } from "./crypto";
 import { ensureSchema, loadStore, now } from "./db";
+import { said, type Said } from "./i18n";
 import { isAllowed, restrictedText } from "./policy";
 import { recordVisit, VISIT_GAP_MINUTES } from "./visits";
 
@@ -73,7 +74,7 @@ export interface LoginResult {
 }
 export interface LoginFailure {
   ok: false;
-  reason: string;
+  reason: Said;
   /** The character verified but the store does not serve them: refused, not failed. */
   restricted?: boolean;
 }
@@ -85,14 +86,14 @@ export async function finishLogin(c: Context<AppEnv>): Promise<LoginResult | Log
 
   const code  = c.req.query("code");
   const state = c.req.query("state");
-  if (!code || !state) return { ok: false, reason: "EVE did not send a code back." };
+  if (!code || !state) return { ok: false, reason: said("ssoNoCode") };
 
   const pending = await db.prepare(`SELECT verifier, next, created_at FROM oauth_states WHERE state = ?1`)
     .bind(state).first<{ verifier: string; next: string; created_at: string }>();
   await db.prepare(`DELETE FROM oauth_states WHERE state = ?1 OR created_at < ?2`)
     .bind(state, new Date(Date.now() - STATE_MINUTES * 60_000).toISOString()).run();
   if (!pending || Date.parse(pending.created_at) < Date.now() - STATE_MINUTES * 60_000)
-    return { ok: false, reason: "The sign-in took too long or was started elsewhere. Try again." };
+    return { ok: false, reason: said("ssoTooSlow") };
 
   // Code to token. The client secret goes in the Basic header; the verifier proves this is
   // the browser that started the flow.
@@ -105,16 +106,16 @@ export async function finishLogin(c: Context<AppEnv>): Promise<LoginResult | Log
     },
     body: new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: pending.verifier }),
   });
-  if (!tokenResponse.ok) return { ok: false, reason: `EVE refused the sign-in (${tokenResponse.status}).` };
+  if (!tokenResponse.ok) return { ok: false, reason: said("ssoRefused", { status: String(tokenResponse.status) }) };
   const token = await tokenResponse.json<{ access_token?: string }>();
-  if (!token.access_token) return { ok: false, reason: "EVE sent no token." };
+  if (!token.access_token) return { ok: false, reason: said("ssoNoToken") };
 
   const claims = await verifyJwt(token.access_token, c.env.EVE_CLIENT_ID);
-  if (!claims) return { ok: false, reason: "The token from EVE did not verify." };
+  if (!claims) return { ok: false, reason: said("ssoBadToken") };
 
   const characterId = Number(String(claims.sub).split(":").pop());
   const name = String(claims.name ?? "");
-  if (!Number.isFinite(characterId) || characterId <= 0) return { ok: false, reason: "The token names no character." };
+  if (!Number.isFinite(characterId) || characterId <= 0) return { ok: false, reason: said("ssoNoCharacter") };
 
   const affiliation = await fetchAffiliation(characterId);
 

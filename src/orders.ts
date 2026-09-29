@@ -7,6 +7,7 @@
 import type { Session } from "./env";
 import { newId } from "./crypto";
 import { now } from "./db";
+import { said, type Said } from "./i18n";
 import type { Catalogue, OrderRow, SiteEvent } from "./protocol";
 
 export interface WebOrderLine { typeId: number; name: string; units: number; unitPrice: number }
@@ -85,7 +86,8 @@ function buyerOf(s: Session): SiteEvent["buyer"] {
   return { id: s.characterId, name: s.name, corporationId: s.corporationId, allianceId: s.allianceId };
 }
 
-export type Outcome = { ok: true; id?: string } | { ok: false; reason: string };
+/** A refusal is said, not worded: the page words it in the store's language. */
+export type Outcome = { ok: true; id?: string } | { ok: false; reason: Said };
 
 /**
  * Books nothing: records what the buyer asked for, priced from the catalogue the site holds,
@@ -97,10 +99,10 @@ export async function placeOrder(
 ): Promise<Outcome> {
 
   const item = catalogue.sections.flatMap((x) => x.items).find((i) => i.typeId === typeId);
-  if (!item) return { ok: false, reason: "That item is not on the price list." };
-  if (item.unitPrice == null) return { ok: false, reason: "That item is listed without a price and cannot be ordered." };
-  if (!Number.isInteger(units) || units < 1) return { ok: false, reason: "The quantity has to be a whole number of at least one." };
-  if (units > MAX_UNITS) return { ok: false, reason: `At most ${MAX_UNITS.toLocaleString("en-US")} of one item per order.` };
+  if (!item) return { ok: false, reason: said("notOnPriceList") };
+  if (item.unitPrice == null) return { ok: false, reason: said("noPrice") };
+  if (!Number.isInteger(units) || units < 1) return { ok: false, reason: said("badQuantity") };
+  if (units > MAX_UNITS) return { ok: false, reason: said("tooMany", { max: MAX_UNITS }) };
 
   const line: WebOrderLine = { typeId, name: item.name, units, unitPrice: item.unitPrice };
   const id = newId();
@@ -126,8 +128,8 @@ export async function placeOrder(
 /** Withdraws a web order the app has not booked yet. */
 export async function cancelWebOrder(db: D1Database, s: Session, id: string): Promise<Outcome> {
   const row = await db.prepare(`SELECT buyer_id, state FROM web_orders WHERE id = ?1`).bind(id).first<{ buyer_id: number; state: string }>();
-  if (!row || row.buyer_id !== s.characterId) return { ok: false, reason: "No such order of yours." };
-  if (row.state !== "submitted" && row.state !== "review") return { ok: false, reason: "That order is past cancelling here." };
+  if (!row || row.buyer_id !== s.characterId) return { ok: false, reason: said("noSuchOrderOfYours") };
+  if (row.state !== "submitted" && row.state !== "review") return { ok: false, reason: said("pastCancelling") };
   await db.prepare(`UPDATE web_orders SET state = 'cancelled', updated_at = ?2 WHERE id = ?1`).bind(id, now()).run();
   await raise(db, { kind: "cancel", at: now(), webOrderId: id, buyer: buyerOf(s), orderId: null, reason: "" });
   return { ok: true };
@@ -137,10 +139,10 @@ export async function cancelWebOrder(db: D1Database, s: Session, id: string): Pr
 export async function cancelOrder(db: D1Database, s: Session, appOrderId: number): Promise<Outcome> {
   const row = await db.prepare(`SELECT buyer_id, buyer_type, status, web_order_id FROM orders WHERE id = ?1`)
     .bind(appOrderId).first<{ buyer_id: number; buyer_type: string; status: string; web_order_id: string }>();
-  if (!row) return { ok: false, reason: "No such order." };
+  if (!row) return { ok: false, reason: said("noSuchOrder") };
   const mine = row.buyer_id === s.characterId || (row.buyer_type === "corporation" && row.buyer_id === s.corporationId);
-  if (!mine) return { ok: false, reason: "That order is not yours." };
-  if (row.status !== "pending") return { ok: false, reason: "That order is already settled." };
+  if (!mine) return { ok: false, reason: said("notYours") };
+  if (row.status !== "pending") return { ok: false, reason: said("alreadySettled") };
   await raise(db, { kind: "cancel", at: now(), webOrderId: row.web_order_id, buyer: buyerOf(s), orderId: appOrderId, reason: "" });
   return { ok: true };
 }

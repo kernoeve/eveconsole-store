@@ -4,6 +4,8 @@
 //   node scripts/sample-push.mjs                  → http://localhost:8787
 //   node scripts/sample-push.mjs https://my-shop.example.workers.dev
 //   BANNER=some.png node scripts/sample-push.mjs  → the same, with a banner across the top
+//   LANGUAGE=de node scripts/sample-push.mjs      → a store that speaks German (any of en, de,
+//                                                    es, fr, ja, ko, ru, zh-Hans); English without
 //
 // The secret comes from SITE_SECRET, else STORE_SYNC_SECRET in .dev.vars. CURSOR and
 // GENERATION may be set to see how the site answers a second call. Without BANNER the push
@@ -69,6 +71,7 @@ const request = {
   generation: process.env.GENERATION ?? "",
   store: {
     name: "Sample Shop",
+    language: process.env.LANGUAGE || undefined,
     // HTML, as the site takes it; plain text with blank lines between paragraphs works too.
     blurb: "<p>Hulls and minerals built to order in <b>Jita</b>. Contracts go out within a day of an order being confirmed; anything not in stock is built first and the price list says how long that takes.</p>"
          + "<ul><li>Prices are as listed at the moment you order.</li><li>Not on the list? Ask in the <a href=\"https://example.com/\">alliance channel</a>.</li></ul>",

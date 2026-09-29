@@ -43,6 +43,7 @@ in the next call.
   "generation": "8f2a…",       // the site database generation the app last saw, "" on first contact
   "store": {
     "name": "Some Shop",
+    "language": "de",                 // what the site words its pages in: en | de | es | fr | ja | ko | ru | zh-Hans (site 0.1.13+); absent = English
     "blurb": "HTML, or plain text — see The blurb below",
     "banner": { "sha256": "…", "contentType": "image/webp" },   // null = none now; absent = leave what the site holds
     "characterName": "Some Seller",   // who issues contracts; "" for a web-only store with no character
