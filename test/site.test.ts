@@ -47,6 +47,9 @@ const catalogue = {
   ] }],
 };
 
+/** The one listing an older app's push amounts to. */
+const sellListing = { id: 0, title: "", side: "sell", catalogue };
+
 function push(over: Partial<SyncRequest> = {}): SyncRequest {
   return {
     protocol: PROTOCOL, appVersion: "test", cursor: 0, generation: "",
@@ -150,7 +153,7 @@ describe("the sync call", () => {
 
   it("hands a placed order back as an event, prices it from the catalogue, and marks it booked when the app's row arrives", async () => {
     const first = await (await sync(push())).json<SyncResponse>();
-    const placed = await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 2, "no rush", true);
+    const placed = await placeOrder(env.DB, buyer, sellListing, 2001, 2, "no rush", true);
     expect(placed.ok).toBe(true);
     const id = placed.ok ? placed.id! : "";
 
@@ -176,10 +179,10 @@ describe("the sync call", () => {
 
   it("refuses to order what is not priced, more than the bound, or by the wrong person", async () => {
     await sync(push());
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2002, 1, "", true)).ok).toBe(false);
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 9999, 1, "", true)).ok).toBe(false);
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 10_001, "", true)).ok).toBe(false);
-    expect((await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 0, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, sellListing, 2002, 1, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, sellListing, 9999, 1, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, sellListing, 2001, 10_001, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, sellListing, 2001, 0, "", true)).ok).toBe(false);
 
     await sync(push({ orders: [{ id: 43, ref: "ZZ", buyerId: 2118000001, buyerType: "character", typeId: 2001, units: 1, totalPrice: 1, status: "pending", createdAt: "2026-09-19T00:00:00Z" }] }));
     expect((await cancelOrder(env.DB, stranger, 43)).ok).toBe(false);
@@ -188,7 +191,7 @@ describe("the sync call", () => {
 
   it("marks a web order held or declined from the app's word, and clears it when the app removes the row", async () => {
     const first = await (await sync(push())).json<SyncResponse>();
-    const placed = await placeOrder(env.DB, buyer, catalogue, "abc", 2001, 1, "", true);
+    const placed = await placeOrder(env.DB, buyer, sellListing, 2001, 1, "", true);
     const id = placed.ok ? placed.id! : "";
     await sync(push({ generation: first.generation, webOrders: [{ webOrderId: id, state: "rejected", reason: "Type not on the list." }] }));
     const row = await env.DB.prepare(`SELECT state, reason FROM web_orders WHERE id = ?1`).bind(id).first<{ state: string; reason: string }>();
@@ -512,5 +515,145 @@ describe("the buyer's pages", () => {
       method: "POST", headers: { Cookie: s.cookie }, body: new URLSearchParams({ _csrf: "wrong", typeId: "2001", units: "1" }),
     }, env);
     expect(r.status).toBe(403);
+  });
+});
+
+describe("listings: a tab each, and offers to sell to the store", () => {
+  async function signedIn(): Promise<{ cookie: string; csrf: string }> {
+    await ensureSchema(env.DB);
+    const ts = new Date().toISOString();
+    const id = "test-session-" + Math.random().toString(36).slice(2);
+    await env.DB.prepare(
+      `INSERT INTO sessions (id, character_id, name, corp_id, alliance_id, csrf, created_at, expires_at, last_seen_at)
+       VALUES (?1, ?2, ?3, ?4, NULL, 'tok', ?5, ?6, ?5)`,
+    ).bind(id, buyer.characterId, buyer.name, buyer.corporationId, ts, new Date(Date.now() + 3_600_000).toISOString()).run();
+    return { cookie: `sid=${id}`, csrf: "tok" };
+  }
+
+  // The store buys these; Widget it both sells (on the Sell listing) and buys.
+  const wanted = {
+    // Counts switched ON, as no app sends them for a Buy listing: the page must not show them anyway.
+    hash: "buy1", asOf: "2026-09-19T20:00:00Z",
+    showInStock: true, showInBuild: true, showReserved: true, showCompletionDate: false, colourByState: false,
+    sections: [{ name: "Wanted", items: [
+      { typeId: 3001, name: "Ore Thing", typeName: "Ore Thing", unitPrice: 50_000, inStock: 9, inBuild: 0, reserved: 0 },
+      { typeId: 2001, name: "Widget", typeName: "Widget", unitPrice: 900_000, inStock: 0, inBuild: 0, reserved: 0 },
+      { typeId: 2003, name: "Sprocket", typeName: "Sprocket", unitPrice: 40_000, inStock: 0, inBuild: 0, reserved: 0 },
+    ] }],
+  };
+  // The Sell listing: the shared catalogue, and Sprocket, which only these tests order or offer.
+  const selling = { ...catalogue, hash: "sell2", sections: [{ name: "Hulls", items: [
+    ...catalogue.sections[0].items,
+    { typeId: 2003, name: "Sprocket", typeName: "Sprocket", groupName: "Parts", unitPrice: 55_000, inStock: 10, inBuild: 0, reserved: 0 },
+  ] }] };
+  const receiver = { id: 98000009, kind: "corporation", name: "Receiving Corp" };
+  const storeWith = (more: object = {}) => ({ ...push().store, senderPolicy: "anyone" as const, buyAssignee: receiver, ...more });
+  const two = (over: Partial<SyncRequest> = {}) => push({
+    store: storeWith(),
+    listings: [{ id: 11, title: "Hulls", side: "sell", catalogue: selling }, { id: 12, title: "", side: "buy", catalogue: wanted }],
+    ...over,
+  });
+  const post = (cookie: string, fields: Record<string, string>) => app.request("/orders", {
+    method: "POST", headers: { Cookie: cookie }, body: new URLSearchParams({ _csrf: "tok", ...fields }),
+  }, env);
+  const webOrders = async () => (await env.DB.prepare(`SELECT COUNT(*) AS n FROM web_orders`).first<{ n: number }>())!.n;
+
+  it("shows the first listing with tabs to the others, and a Buy listing as prices only", async () => {
+    await sync(two());
+    const home = await (await app.request("/", {}, env)).text();
+    expect(home).toContain('class="tabs"');
+    expect(home).toContain('href="/?list=12"');
+    expect(home).toContain(">Hulls<");
+    expect(home).toContain("We buy");             // the untitled Buy listing's tab
+    expect(home).toContain(">Availability<");     // the Sell listing, counted as before
+
+    const buy = await (await app.request("/?list=12", {}, env)).text();
+    expect(buy).toContain("We pay");
+    expect(buy).toContain("50,000 ISK");
+    expect(buy).toContain("Receiving Corp");
+    expect(buy).not.toContain("available now");   // nothing counted on a Buy listing
+    expect(buy).not.toContain("In stock");
+    expect(buy).toContain("Sign in with EVE to offer items");
+  });
+
+  it("an older app's push is one listing, with no tabs", async () => {
+    await sync(push({ store: storeWith() }));
+    const home = await (await app.request("/", {}, env)).text();
+    expect(home).not.toContain('class="tabs"');
+    expect(home).toContain(">Availability<");
+  });
+
+  it("takes an offer: the event says buy and names the listing, holds no stock, and is no purchase", async () => {
+    // With an earlier offer of three Sprockets already booked: no purchase either.
+    const booked = { id: 81, ref: "OF0", buyerId: buyer.characterId, buyerType: "character", typeId: 2003, units: 3, totalPrice: 120_000,
+                     status: "pending", createdAt: new Date().toISOString(), side: "buy", postingId: 12 };
+    const limited = () => two({ store: storeWith({ limit: { units: 1, scope: "type", period: "all", count: 1 } }), orders: [booked] });
+    await sync(limited());
+    const s = await signedIn();
+    const buyTab = await (await app.request("/?list=12", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(buyTab).toContain('name="postingId" value="12"');
+    expect(buyTab).toContain("Confirm your offer");
+    expect(buyTab).not.toContain("Limit reached");
+    const page = async () => await (await app.request("/", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(await page()).toContain("10 available now");   // Sprocket
+
+    const offered = await post(s.cookie, { typeId: "2003", units: "5", postingId: "12" });
+    expect(offered.headers.get("Location")).toBe("/orders");
+    const ev = (await (await sync(limited())).json<SyncResponse>()).events.filter((e) => e.kind === "order").at(-1);
+    expect(ev?.side).toBe("buy");
+    expect(ev?.lines).toEqual([{ typeId: 2003, units: 5, unitPrice: 40_000, postingId: 12 }]);
+
+    // The Sprockets offered come in: the Sell tab still shows the ten on the shelf, and the limit
+    // of one per item still has its one left.
+    const sprocket = /Sprocket[\s\S]*?<\/tr>/.exec(await page())?.[0] ?? "";
+    expect(sprocket).toContain("10 available now");
+    expect(sprocket).not.toContain("Limit reached");
+    const ordered = await post(s.cookie, { typeId: "2003", units: "1", postingId: "11" });
+    expect(ordered.headers.get("Location")).toBe("/orders");
+    const order = (await (await sync(limited())).json<SyncResponse>()).events.filter((e) => e.kind === "order").at(-1);
+    expect(order?.side).toBeUndefined();
+    expect(order?.lines).toEqual([{ typeId: 2003, units: 1, unitPrice: 55_000, postingId: 11 }]);
+    // An order does count: the one Sprocket bought uses the limit the five offered never touched.
+    expect(/Sprocket[\s\S]*?<\/tr>/.exec(await page())?.[0]).toContain("Limit reached");
+  });
+
+  it("refuses an offer of what the Buy listing does not list, and any offer when nobody receives the contracts", async () => {
+    await sync(two());
+    const s = await signedIn();
+    const before = await webOrders();
+    const r = await post(s.cookie, { typeId: "2002", units: "1", postingId: "12" });   // Gadget: on the Sell list only
+    expect(r.headers.get("Location")).toBe("/?list=12");
+    expect(await webOrders()).toBe(before);
+
+    await sync(two({ store: storeWith({ buyAssignee: null }) }));
+    const closed = await post(s.cookie, { typeId: "3001", units: "1", postingId: "12" });
+    expect(closed.headers.get("Location")).toBe("/?list=12");
+    expect(await webOrders()).toBe(before);
+    const page = await (await app.request("/?list=12", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(page).toContain("not taking offers");
+    expect(page).not.toContain('<form class="order"');
+  });
+
+  it("follows an offer on My orders: the contract to make, the contract received, paid", async () => {
+    const row = { id: 70, ref: "OF1", buyerId: buyer.characterId, buyerType: "character", typeId: 3001, typeName: "Ore Thing",
+                  units: 10, totalPrice: 500_000, status: "pending", createdAt: "2026-09-19T00:00:00Z", side: "buy", postingId: 12 };
+    await sync(two({ orders: [row] }));
+    const s = await signedIn();
+    const read = async () => await (await app.request("/orders", { headers: { Cookie: s.cookie } }, env)).text();
+    let html = await read();
+    expect(html).toContain("Make an Item Exchange contract to Receiving Corp, asking 500,000 ISK");
+    expect(html).toContain("You sell");
+    const flag = /\/orders\/70\/cancel"[^>]*data-contract="(\d)"/;
+
+    await sync(two({ orders: [{ ...row, fulfilment: "contract", contractId: 555, contractedPrice: 600_000 }] }));
+    html = await read();
+    expect(html).toContain("Contract 555 asks 600,000 ISK against 500,000 ISK agreed");
+    expect(flag.exec(html)?.[1]).toBe("0");   // their contract, not the store's to withdraw
+
+    await sync(two({ orders: [{ ...row, fulfilment: "contract", contractId: 555, contractedPrice: 500_000 }] }));
+    expect(await read()).toContain("Contract 555 received");
+
+    await sync(two({ orders: [{ ...row, status: "completed", fulfilment: "contract", contractId: 555 }] }));
+    expect(await read()).toContain(">Paid<");
   });
 });

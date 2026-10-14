@@ -11,7 +11,7 @@ import { cancelOrder, cancelWebOrder, ordersFor, pendingFor, pendingUnits, place
 import { allowanceFor, describeLimit, orderedByScope } from "./limits";
 
 import { handleBanner, handleSync, handleVersion } from "./sync";
-import { BANNER_PATH, SYNC_PATH, type Theme } from "./protocol";
+import { BANNER_PATH, SYNC_PATH, type Catalogue, type Listing, type Theme } from "./protocol";
 import { pickTheme, themeOptions } from "./theme";
 import { Layout, Message, type Flash } from "./views/layout";
 import { CataloguePage, OrdersPage } from "./views/pages";
@@ -95,11 +95,23 @@ async function signedForm(c: Ctx): Promise<FormData | null> {
 
 // ── Pages ─────────────────────────────────────────────────────────────────
 
+/** Every Sell listing's items as one catalogue: what a purchase limit looks groups up in. */
+function sellCatalogue(store: StoreState): Catalogue | null {
+  const sell = store.listings.filter((l) => l.side !== "buy");
+  if (sell.length === 0) return null;
+  return { ...sell[0].catalogue, sections: sell.flatMap((l) => l.catalogue.sections) };
+}
+
+/** The listing a page or a form names by ?list= / postingId, or the store's first. */
+function listingOf(store: StoreState, id: number): Listing | undefined {
+  return store.listings.find((l) => l.id === id) ?? store.listings[0];
+}
+
 app.get("/", async (c) => {
   const { store, ...common } = await page(c);
   const { session, lang } = common;
 
-  if (!store?.catalogue)
+  if (!store || store.listings.length === 0)
     return c.html(<Layout storeName={t(lang, "storeFallback")} active="none" {...common}>
       <Message title={t(lang, "notOpenTitle")} text={t(lang, "notOpenText")} />
     </Layout>);
@@ -115,13 +127,19 @@ app.get("/", async (c) => {
     </Layout>);
   }
 
+  // The listing this page shows: a tab each, the first by default.
+  const listing = listingOf(store, Number(c.req.query("list") ?? 0))!;
+  const buying  = listing.side === "buy";
+
   // With a purchase limit, what this buyer has taken already decides what the list offers them.
-  const limit = store.info.limit ?? null;
+  // Sell listings only: the limit is on what a buyer takes from the shelf.
+  const limit = buying ? null : store.info.limit ?? null;
   const taken = limit && session && allowed
-    ? orderedByScope(limit, store.catalogue, await ordersFor(c.env.DB, session), await pendingFor(c.env.DB, session.characterId), session.characterId)
+    ? orderedByScope(limit, sellCatalogue(store), await ordersFor(c.env.DB, session), await pendingFor(c.env.DB, session.characterId), session.characterId)
     : null;
   return c.html(<Layout storeName={store.info.name} active="catalogue" asOf={asOf(store)} {...common}>
-    <CataloguePage lang={lang} store={store.info} catalogue={store.catalogue} pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed}
+    <CataloguePage lang={lang} store={store.info} listing={listing} listings={store.listings}
+                   pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed}
                    limit={limit} taken={taken} banner={await bannerHash(c.env.DB)} />
   </Layout>);
 
@@ -143,7 +161,8 @@ app.get("/orders", async (c) => {
   if (store && store.info.senderPolicy === "list" && !(await isAllowed(c.env.DB, store.info, session)))
     return refuse(c, store, session.name);
   return c.html(<Layout storeName={store?.info.name ?? t(common.lang, "storeFallback")} active="orders" asOf={asOf(store)} {...common}>
-    <OrdersPage lang={common.lang} session={session} waiting={await waitingFor(c.env.DB, session.characterId)} orders={await ordersFor(c.env.DB, session)} />
+    <OrdersPage lang={common.lang} session={session} waiting={await waitingFor(c.env.DB, session.characterId)} orders={await ordersFor(c.env.DB, session)}
+                buyAssignee={store?.info.buyAssignee ?? null} />
   </Layout>);
 });
 
@@ -158,24 +177,37 @@ app.post("/orders", async (c) => {
   await ensureSchema(c.env.DB);
   const store = await loadStore(c.env.DB);
   const lang = langOf(store?.info.language);
-  if (!store?.catalogue) { flash(c, "bad", t(lang, "priceListUnavailable")); return c.redirect("/"); }
+  if (!store || store.listings.length === 0) { flash(c, "bad", t(lang, "priceListUnavailable")); return c.redirect("/"); }
   if (!(await isAllowed(c.env.DB, store.info, session))) return c.redirect("/");
 
   const typeId = Number(form.get("typeId"));
   const units  = Number(form.get("units"));
 
+  // The listing the form came from. A form from before listings names none, and meant the
+  // store's first Sell listing — the only price list there was.
+  const named   = Number(form.get("postingId") ?? 0);
+  const listing = named > 0
+    ? store.listings.find((l) => l.id === named)
+    : store.listings.find((l) => l.side !== "buy");
+  if (!listing) { flash(c, "bad", t(lang, "priceListUnavailable")); return c.redirect("/"); }
+  const buying = listing.side === "buy";
+  const back   = listing.id > 0 ? `/?list=${listing.id}` : "/";
+
+  // An offer needs someone to make its contract out to; without one the store takes none.
+  if (buying && !store.info.buyAssignee) { flash(c, "bad", t(lang, "buyNotTaking")); return c.redirect(back); }
+
   // The store's purchase limit, refused here as it would be refused by the app: the list greys
-  // out what is over, but a form can be sent regardless.
-  if (store.info.limit) {
+  // out what is over, but a form can be sent regardless. Not on an offer to sell.
+  if (store.info.limit && !buying) {
     const limit = store.info.limit;
-    const taken = orderedByScope(limit, store.catalogue, await ordersFor(c.env.DB, session), await pendingFor(c.env.DB, session.characterId), session.characterId);
-    const item  = store.catalogue.sections.flatMap((x) => x.items).find((i) => i.typeId === typeId);
+    const taken = orderedByScope(limit, sellCatalogue(store), await ordersFor(c.env.DB, session), await pendingFor(c.env.DB, session.characterId), session.characterId);
+    const item  = listing.catalogue.sections.flatMap((x) => x.items).find((i) => i.typeId === typeId);
     const a     = allowanceFor(limit, taken, typeId, item?.groupId);
     if (units > a.remaining) {
       flash(c, "bad", a.remaining === 0
         ? t(lang, "limitReachedFlash", { limit: describeLimit(lang, limit) })
         : t(lang, "limitOverFlash", { limit: describeLimit(lang, limit), left: a.remaining, asked: units }));
-      return c.redirect("/");
+      return c.redirect(back);
     }
   }
 
@@ -183,16 +215,16 @@ app.post("/orders", async (c) => {
   // (no script, or no mailbox) means the default, which is yes.
   const asked = form.get("mailUpdatesAsked") != null;
   const mailUpdates = asked ? form.get("mailUpdates") != null : true;
-  const r = await placeOrder(c.env.DB, session, store.catalogue, store.catalogueHash,
+  const r = await placeOrder(c.env.DB, session, listing,
     typeId, units, String(form.get("note") ?? ""), mailUpdates);
 
 
   if (r.ok) {
-    flash(c, "good", t(lang, "orderSent"));
+    flash(c, "good", buying ? t(lang, "offerSent", { myOrders: t(lang, "navMyOrders") }) : t(lang, "orderSent"));
     return c.redirect("/orders");
   }
   flash(c, "bad", tell(lang, r.reason));
-  return c.redirect("/");
+  return c.redirect(back);
 });
 
 app.post("/orders/:id/cancel", async (c) => {

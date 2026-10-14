@@ -192,4 +192,46 @@ export const en = {
   webDeclinedBecause: "Declined — {reason}",
   webDeclined: "Declined",
   webWithdrawn: "Withdrawn",
+
+  // ── Listings, and offers to sell to the store ───────────────────────────────
+  /** The store's listings are tabs above the price list. A listing of what the store sells, when the owner gave it no title. */
+  tabSellFallback: "We sell",
+  /** A listing of what the store BUYS from players, when the owner gave it no title. */
+  tabBuyFallback: "We buy",
+  /** The accessible name of the row of listing tabs. */
+  listingsNav: "Price lists",
+  /** A small mark after a Buy listing's tab title, so it reads as one the visitor sells into. */
+  tabBuyMark: "buying",
+  /** Above a Buy listing. {to} is the character, corporation or alliance the contract goes to. "Item Exchange" is the game's name for the contract type: use the client's word in the language. */
+  buyIntro: "The store buys these at the prices shown. Offer what you have; once the store confirms, make an Item Exchange contract to {to} asking the total.",
+  buyNotTaking: "The store is not taking offers at the moment.",
+  signInToOffer: "Sign in with EVE to offer items. Prices are as listed at the moment you offer.",
+  /** The price column of a Buy listing: what the store pays for one. */
+  colWePay: "We pay",
+  /** The heading over a Buy listing's column of offer buttons (a verb: sell to the store). */
+  colOfferAction: "Sell",
+  /** In a Buy listing's price column, for an item listed without a price. Lower case in English. */
+  notBuying: "not wanted",
+  /** The button that offers the item to the store (a verb). */
+  offerButton: "Offer",
+  offerNote: "Prices are what the store pays now. Your offer is confirmed once the store's system has taken it, usually within a couple of minutes.",
+  confirmOfferTitle: "Confirm your offer",
+  wePayEach: "We pay each",
+  /** {to} is who the contract goes to, {myOrders} is navMyOrders. "Item Exchange" and "I will receive" are the game's words on the contract window. */
+  confirmOfferNote: "The price is as listed now. Once the store confirms, make an Item Exchange contract to {to} with these items, asking the total in “I will receive”. You can withdraw the offer from {myOrders}.",
+  sendOffer: "Send offer",
+  sendingOffer: "Sending your offer… this takes a few seconds.",
+  /** {myOrders} is navMyOrders. */
+  offerSent: "Offer sent to the store. Once it is confirmed, {myOrders} shows the contract to make.",
+  notOnBuyList: "That item is not on this list.",
+  offerPaid: "Paid",
+  /** {id} is the contract's number; {asked} what it asks and {agreed} what was agreed, both iskAmount. */
+  offerContractAsksMore: "Contract {id} asks {asked} against {agreed} agreed — waiting for the store",
+  offerContractReceived: "Contract {id} received — waiting for the store to accept it",
+  /** {to} is who the contract goes to, {amount} the ISK it should ask (iskAmount). */
+  offerMakeContract: "Make an Item Exchange contract to {to}, asking {amount}",
+  /** On the buyer's orders, when they have sold to the store too: which way each went, dirYouBuy or dirYouSell. */
+  colDirection: "Kind",
+  dirYouBuy: "You buy",
+  dirYouSell: "You sell",
 } as const satisfies Record<string, Message>;

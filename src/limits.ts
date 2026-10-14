@@ -72,15 +72,16 @@ export function orderedByScope(
     const key = scopeKey(limit, typeId, groupId ?? groupOf.get(typeId));
     taken.set(key, (taken.get(key) ?? 0) + units);
   };
+  // ⚠️ What the buyer took from the shelf: what they sold to a Buy listing is not counted.
   for (const o of orders) {
-    if (o.buyerType !== "character" || o.buyerId !== characterId || o.status === "canceled") continue;
+    if (o.buyerType !== "character" || o.buyerId !== characterId || o.status === "canceled" || o.side === "buy") continue;
     if (start && new Date(o.createdAt) < start) continue;
     add(o.typeId, o.groupId, o.units);
   }
   for (const w of waiting) {
     if (w.buyerId !== characterId || (w.state !== "submitted" && w.state !== "review")) continue;
     if (start && new Date(w.createdAt) < start) continue;
-    for (const l of w.lines) add(l.typeId, undefined, l.units);
+    for (const l of w.lines) if (l.side !== "buy") add(l.typeId, undefined, l.units);
   }
   return taken;
 }

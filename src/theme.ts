@@ -140,6 +140,12 @@ header.bar .who select:hover { border-color: var(--border-strong); }
 .blurb.html summary { cursor: pointer; color: var(--accent); }
 .banner { margin-top: 16px; }
 .banner img { display: block; width: 100%; max-height: 300px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-subtle); }
+/* The store's listings, a tab each. */
+nav.tabs { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+nav.tabs a { color: var(--text-muted); padding: 6px 2px; margin-bottom: -1px; border-bottom: 2px solid transparent; }
+nav.tabs a:hover { color: var(--text-primary); text-decoration: none; }
+nav.tabs a.active { color: var(--accent); border-bottom-color: var(--accent); }
+nav.tabs .side { margin-left: 6px; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--info); }
 table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 table.grid th {
   text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
@@ -150,6 +156,8 @@ table.grid th {
 :is(:lang(ja), :lang(ko), :lang(zh)) table.grid th { font-size: 11px; letter-spacing: 0; }
 table.grid td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
 table.grid tr:hover td { background: var(--surface-hover); }
+/* A heading over right-aligned cells (the order and offer buttons) sits over them. */
+table.grid th.right { text-align: right; }
 table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.grid tr.section td { background: var(--surface-panel-alt); color: var(--text-bright); font-weight: 600; font-size: 12px; }
 table.grid tr.ineligible td { opacity: .4; }

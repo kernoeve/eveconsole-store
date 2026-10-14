@@ -7,9 +7,9 @@
 
 import { randomToken } from "./crypto";
 import { langOf, type Lang } from "./i18n";
-import type { Catalogue, StoreInfo } from "./protocol";
+import type { Catalogue, Listing, StoreInfo } from "./protocol";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 
 const steps: { version: number; sql: string[] }[] = [
@@ -79,6 +79,12 @@ const steps: { version: number; sql: string[] }[] = [
     sql: [`CREATE TABLE IF NOT EXISTS buyer_prefs (
              character_id INTEGER PRIMARY KEY, theme TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)`],
   },
+  {
+    version: 5,
+    // The store's listings, each a tab, and what they come to for the "did it change?" test.
+    sql: [`ALTER TABLE store ADD COLUMN listings_json TEXT NOT NULL DEFAULT ''`,
+          `ALTER TABLE store ADD COLUMN listings_hash TEXT NOT NULL DEFAULT ''`],
+  },
 ];
 
 
@@ -125,6 +131,8 @@ export async function meta(db: D1Database, key: string): Promise<string | null> 
 export interface StoreState {
   info: StoreInfo;
   catalogue: Catalogue | null;
+  /** Every listing, in the store's order; an older app's one catalogue is a Sell listing of id 0. */
+  listings: Listing[];
   catalogueHash: string;
   pushedAt: string | null;
   appVersion: string;
@@ -132,12 +140,16 @@ export interface StoreState {
 
 /** What the app last pushed, or null before the first sync. */
 export async function loadStore(db: D1Database): Promise<StoreState | null> {
-  const row = await db.prepare(`SELECT json, catalogue_json, catalogue_hash, pushed_at, app_version FROM store WHERE id = 1`)
-    .first<{ json: string; catalogue_json: string; catalogue_hash: string; pushed_at: string | null; app_version: string }>();
+  const row = await db.prepare(`SELECT json, catalogue_json, catalogue_hash, listings_json, pushed_at, app_version FROM store WHERE id = 1`)
+    .first<{ json: string; catalogue_json: string; catalogue_hash: string; listings_json: string; pushed_at: string | null; app_version: string }>();
   if (!row) return null;
+  const catalogue = row.catalogue_json ? (JSON.parse(row.catalogue_json) as Catalogue) : null;
+  const listings = row.listings_json ? (JSON.parse(row.listings_json) as Listing[]) : [];
   return {
     info: JSON.parse(row.json) as StoreInfo,
-    catalogue: row.catalogue_json ? (JSON.parse(row.catalogue_json) as Catalogue) : null,
+    catalogue,
+    listings: listings.length > 0 ? listings
+      : catalogue && catalogue.sections.length > 0 ? [{ id: 0, title: "", side: "sell", catalogue }] : [],
     catalogueHash: row.catalogue_hash,
     pushedAt: row.pushed_at,
     appVersion: row.app_version,

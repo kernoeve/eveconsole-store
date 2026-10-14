@@ -8,9 +8,10 @@ import type { Session } from "./env";
 import { newId } from "./crypto";
 import { now } from "./db";
 import { said, type Said } from "./i18n";
-import type { Catalogue, OrderRow, SiteEvent } from "./protocol";
+import type { Listing, OrderRow, SiteEvent } from "./protocol";
 
-export interface WebOrderLine { typeId: number; name: string; units: number; unitPrice: number }
+/** One line of a web order, with the listing it came from: "buy" is an offer to sell to the store. */
+export interface WebOrderLine { typeId: number; name: string; units: number; unitPrice: number; postingId?: number; side?: "sell" | "buy" }
 
 export interface WebOrder {
   id: string;
@@ -27,13 +28,13 @@ export interface WebOrder {
 export const MAX_UNITS = 10_000;
 
 /** Units of each type in web orders the app has not yet taken: shown as unavailable so two
- * buyers cannot both see the last unit. */
+ * buyers cannot both see the last unit. Offers to sell take nothing off the shelf. */
 export async function pendingUnits(db: D1Database): Promise<Map<number, number>> {
   const rows = await db.prepare(`SELECT lines_json FROM web_orders WHERE state IN ('submitted', 'review')`).all<{ lines_json: string }>();
   const map = new Map<number, number>();
   for (const r of rows.results)
     for (const l of JSON.parse(r.lines_json) as WebOrderLine[])
-      map.set(l.typeId, (map.get(l.typeId) ?? 0) + l.units);
+      if (l.side !== "buy") map.set(l.typeId, (map.get(l.typeId) ?? 0) + l.units);
   return map;
 }
 
@@ -90,21 +91,27 @@ function buyerOf(s: Session): SiteEvent["buyer"] {
 export type Outcome = { ok: true; id?: string } | { ok: false; reason: Said };
 
 /**
- * Books nothing: records what the buyer asked for, priced from the catalogue the site holds,
- * and raises the event the app will act on.
+ * Books nothing: records what the buyer asked for, priced from the listing the site holds,
+ * and raises the event the app will act on. A Buy listing's is an offer to sell to the store.
  */
 export async function placeOrder(
-  db: D1Database, s: Session, catalogue: Catalogue, catalogueHash: string,
+  db: D1Database, s: Session, listing: Listing,
   typeId: number, units: number, note: string, mailUpdates: boolean,
 ): Promise<Outcome> {
 
+  const buying = listing.side === "buy";
+  const catalogue = listing.catalogue;
+  const catalogueHash = catalogue.hash ?? "";
   const item = catalogue.sections.flatMap((x) => x.items).find((i) => i.typeId === typeId);
-  if (!item) return { ok: false, reason: said("notOnPriceList") };
+  if (!item) return { ok: false, reason: said(buying ? "notOnBuyList" : "notOnPriceList") };
   if (item.unitPrice == null) return { ok: false, reason: said("noPrice") };
   if (!Number.isInteger(units) || units < 1) return { ok: false, reason: said("badQuantity") };
   if (units > MAX_UNITS) return { ok: false, reason: said("tooMany", { max: MAX_UNITS }) };
 
-  const line: WebOrderLine = { typeId, name: item.name, units, unitPrice: item.unitPrice };
+  // The listing travels with the line, so the app checks it against that listing's prices; an
+  // older app's one listing (id 0) is named by nothing, as before.
+  const postingId = listing.id > 0 ? listing.id : undefined;
+  const line: WebOrderLine = { typeId, name: item.name, units, unitPrice: item.unitPrice, postingId, side: buying ? "buy" : undefined };
   const id = newId();
   const ts = now();
   // One round trip for the order and its event: the buyer is waiting on this.
@@ -117,8 +124,9 @@ export async function placeOrder(
            note.slice(0, 500), catalogueHash, line.units * line.unitPrice, ts, mailUpdates ? 1 : 0),
     eventStatement(db, {
       kind: "order", at: ts, webOrderId: id, buyer: buyerOf(s),
-      lines: [{ typeId, units, unitPrice: item.unitPrice }],
+      lines: [{ typeId, units, unitPrice: item.unitPrice, postingId }],
       contractTo: null, note: note.slice(0, 500), catalogueHash, mailUpdates,
+      ...(buying ? { side: "buy" as const } : {}),
     }),
   ]);
   return { ok: true, id };

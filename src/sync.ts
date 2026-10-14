@@ -44,17 +44,23 @@ export async function handleSync(c: Context<AppEnv>): Promise<Response> {
   const catalogueJson = JSON.stringify(req.catalogue);
   const catalogueHash = req.catalogue.hash ?? "";
   const appVersion    = req.appVersion ?? "";
-  const held = await db.prepare(`SELECT json, catalogue_hash, pushed_at, app_version FROM store WHERE id = 1`)
-    .first<{ json: string; catalogue_hash: string; pushed_at: string | null; app_version: string }>();
-  const sameStore = held !== null && held.json === storeJson && held.catalogue_hash === catalogueHash && held.app_version === appVersion;
+  // The listings by what they are and their catalogues' hashes: an older app sends none, and
+  // its one catalogue is then the only listing (see loadStore).
+  const listingsJson  = req.listings ? JSON.stringify(req.listings) : "";
+  const listingsHash  = (req.listings ?? []).map((l) => `${l.id}:${l.side}:${l.title}:${l.catalogue?.hash ?? ""}`).join("|");
+  const held = await db.prepare(`SELECT json, catalogue_hash, listings_hash, pushed_at, app_version FROM store WHERE id = 1`)
+    .first<{ json: string; catalogue_hash: string; listings_hash: string; pushed_at: string | null; app_version: string }>();
+  const sameStore = held !== null && held.json === storeJson && held.catalogue_hash === catalogueHash
+                 && held.listings_hash === listingsHash && held.app_version === appVersion;
   const freshEnough = !!held?.pushed_at && Date.parse(held.pushed_at) > Date.now() - PUSHED_AT_MINUTES * 60_000;
   if (!(sameStore && freshEnough))
     await db.prepare(
-      `INSERT INTO store (id, json, catalogue_json, catalogue_hash, pushed_at, app_version)
-       VALUES (1, ?1, ?2, ?3, ?4, ?5)
+      `INSERT INTO store (id, json, catalogue_json, catalogue_hash, pushed_at, app_version, listings_json, listings_hash)
+       VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
        ON CONFLICT(id) DO UPDATE SET json = excluded.json, catalogue_json = excluded.catalogue_json,
-         catalogue_hash = excluded.catalogue_hash, pushed_at = excluded.pushed_at, app_version = excluded.app_version`,
-    ).bind(storeJson, catalogueJson, catalogueHash, ts, appVersion).run();
+         catalogue_hash = excluded.catalogue_hash, pushed_at = excluded.pushed_at, app_version = excluded.app_version,
+         listings_json = excluded.listings_json, listings_hash = excluded.listings_hash`,
+    ).bind(storeJson, catalogueJson, catalogueHash, ts, appVersion, listingsJson, listingsHash).run();
 
   // ── Who may buy: replaced whole when it differs, so a removed entry is gone at once ──
   const wanted = (req.store.allowed ?? []).map((a) => ({ id: a.id, kind: a.kind, name: a.name ?? "" }));

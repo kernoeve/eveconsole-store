@@ -63,9 +63,10 @@ in the next call.
         { "key": "blue-dark",  "name": "Blue (dark)",  "base": "dark",  "tokens": { "surface-base": "#121a26", "...": "..." } },
         { "key": "pink-light", "name": "Pink (light)", "base": "light", "tokens": { "...": "..." } }
       ]
-    }
+    },
+    "buyAssignee": { "id": 98000001, "kind": "corporation", "name": "Some Corp" }   // who Buy listings' contracts go to (site 0.2.0+); null/absent = no offers taken
   },
-  "catalogue": {
+  "catalogue": {                  // the store's first Sell listing, for a site before 0.2.0; a newer site reads "listings"
     "hash": "sha256 hex of the catalogue content",
     "asOf": "2026-09-19T20:00:00Z",
     "showInStock": true, "showInBuild": true, "showReserved": true, "showCompletionDate": false,
@@ -88,6 +89,10 @@ in the next call.
       }
     ]
   },
+  "listings": [                   // every listing in the store's order, each a tab (site 0.2.0+); absent = the catalogue is the one Sell listing
+    { "id": 11, "title": "Hulls", "side": "sell", "catalogue": { "...": "as above" } },
+    { "id": 12, "title": "",      "side": "buy",  "catalogue": { "...": "as above; counts are not shown" } }
+  ],
   "orders": [                     // rows changed since the last acknowledged push; upsert by id
     {
       "id": 41, "ref": "K7P2QX", "webOrderId": "",       // webOrderId set for orders placed on the site
@@ -99,7 +104,10 @@ in the next call.
       "estimatedDate": "2026-09-20", "contractId": null,
       "createdAt": "2026-09-19T19:58:00Z", "completedOn": null,
       "storeId": 3,
-      "channel": "web"            // web | mail | manual
+      "channel": "web",           // web | mail | manual
+      "side": "sell",             // "buy": an offer to sell to the store, off a Buy listing (site 0.2.0+)
+      "postingId": 11,            // the listing it was placed against, 0 for none
+      "contractedPrice": null     // an offer: what the seller's contracts ask, once any are in
     }
   ],
   "removed": [ 7, 9 ],            // app order ids the site should hide
@@ -128,7 +136,7 @@ overlays carry alpha first, as Avalonia writes it).
 {
   "protocol": 1,
   "siteVersion": "1.0.0",
-  "schemaVersion": 1,
+  "schemaVersion": 5,
   "generation": "8f2a…",          // random id minted when the site's database was first initialised
   "catalogueHash": "…",           // what the site now holds
   "ordersApplied": [ 41 ],        // ids upserted this call
@@ -143,7 +151,8 @@ overlays carry alpha first, as Avalonia writes it).
       "mailUpdates": true,         // the buyer's answer to "keep me posted by EVE mail"; absent means yes
 
       "catalogueHash": "…",        // the catalogue the buyer was looking at
-      "lines": [ { "typeId": 2001, "units": 2, "unitPrice": 1100000 } ]   // priced by the site from its stored catalogue
+      "lines": [ { "typeId": 2001, "units": 2, "unitPrice": 1100000, "postingId": 11 } ],   // priced by the site from the listing it holds; postingId from 0.2.0
+      "side": "buy"                // only on an offer to sell to a Buy listing (site 0.2.0+)
     },
     {
       "seq": 125, "kind": "cancel", "at": "2026-09-19T20:05:00Z",

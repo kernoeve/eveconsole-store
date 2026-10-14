@@ -6,6 +6,8 @@
 //   BANNER=some.png node scripts/sample-push.mjs  → the same, with a banner across the top
 //   LANGUAGE=de node scripts/sample-push.mjs      → a store that speaks German (any of en, de,
 //                                                    es, fr, ja, ko, ru, zh-Hans); English without
+//   LISTINGS=0 node scripts/sample-push.mjs       → one price list, the way an app before listings
+//                                                    pushes it; without, a Sell tab and a Buy tab
 //
 // The secret comes from SITE_SECRET, else STORE_SYNC_SECRET in .dev.vars. CURSOR and
 // GENERATION may be set to see how the site answers a second call. Without BANNER the push
@@ -90,6 +92,8 @@ const request = {
         { key: "blue-dark", name: "Blue (dark)", base: "dark", tokens: { ...dark, "surface-base": "#121a26", "surface-panel": "#192434", "surface-panel-alt": "#1d2a3d", "surface-header": "#22304a", "surface-raised": "#2a3a55" } },
       ],
     },
+    // Who sellers make a Buy listing's Item Exchange contracts out to.
+    buyAssignee: { id: 98000001, kind: "corporation", name: "Sample Corp" },
   },
   catalogue: {
     hash: "sample-" + new Date().toISOString().slice(0, 13),
@@ -116,8 +120,12 @@ const request = {
       ] },
     ],
   },
-  // Two orders in a made-up buyer's name: one delivered, one being built.
+  // Two orders in a made-up buyer's name: one delivered, one being built; and an offer they made
+  // to sell to the store, its contract in.
   orders: [
+    { id: 43, ref: "QX9ZT4", buyerId: 2118000001, buyerType: "character", buyerName: "Some Buyer", typeId: 16272, typeName: "Heavy Water",
+      units: 20_000, totalPrice: 1_600_000, status: "pending", fulfilment: "contract", contractId: 210000002,
+      createdAt: inDays(-1), storeId: 1, channel: "web", side: "buy", postingId: 102, contractedPrice: 1_600_000 },
     { id: 41, ref: "K7P2QX", buyerId: 2118000001, buyerType: "character", buyerName: "Some Buyer", typeId: 587, typeName: "Rifter",
       units: 2, totalPrice: 8_400_000, status: "completed", fulfilment: "contract", contractId: 210000001,
       createdAt: inDays(-9), completedOn: inDays(-8).slice(0, 10), storeId: 1, channel: "mail" },
@@ -128,6 +136,27 @@ const request = {
   removed: [],
   webOrders: [],
 };
+
+// The listings, a tab each: the price list above, and what the store buys.
+if (process.env.LISTINGS !== "0") {
+  request.listings = [
+    { id: 101, title: "Ships and minerals", side: "sell", catalogue: request.catalogue },
+    { id: 102, title: "", side: "buy", catalogue: {
+      hash: "sample-buy-" + new Date().toISOString().slice(0, 13), asOf: new Date().toISOString(),
+      showInStock: false, showInBuild: false, showReserved: false, showCompletionDate: false, colourByState: false,
+      sections: [
+        { name: "Ice products", items: [
+          item(16272, "Heavy Water", "Ice Product", 80),
+          item(16273, "Liquid Ozone", "Ice Product", 180),
+        ] },
+        { name: "Salvage", items: [
+          item(25595, "Alloyed Tritanium Bar", "Salvaged Materials", 9_500),
+          item(25598, "Tripped Power Circuit", "Salvaged Materials", null),
+        ] },
+      ],
+    } },
+  ];
+} else delete request.store.buyAssignee;
 
 async function signedCall(path, method, payload) {
   const body = JSON.stringify(payload);

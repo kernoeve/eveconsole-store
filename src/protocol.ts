@@ -17,7 +17,12 @@ export interface SyncRequest {
   cursor: number;
   generation: string;
   store: StoreInfo;
+  /** The store's first Sell listing, for a site from before listings; one that reads
+   * {@link listings} shows those instead. */
   catalogue: Catalogue;
+  /** Every listing in the store's order, each a tab (app 0.9.18+). Absent from an older app,
+   * whose one catalogue is then the only, Sell, listing. */
+  listings?: Listing[];
   orders: OrderRow[];
   removed: number[];
   webOrders: WebOrderState[];
@@ -48,6 +53,28 @@ export interface StoreInfo {
    * on their own call. */
   banner?: BannerInfo | null;
   theme: Theme;
+  /** Who a Buy listing's sellers make their Item Exchange contracts out to; null or absent
+   * when nobody is named, and then no offers are taken. */
+  buyAssignee?: Assignee | null;
+}
+
+export interface Assignee {
+  id: number;
+  kind: "character" | "corporation" | "alliance" | string;
+  name: string;
+}
+
+/**
+ * One of the store's listings, a tab of its own. "sell" is the price list it always was;
+ * "buy" is the prices the store pays, with no counts, which a visitor offers to sell to.
+ */
+export interface Listing {
+  /** The posting's id in EVE Console; what an order names the listing by. 0 for the one
+   * listing of an older app. */
+  id: number;
+  title: string;
+  side: "sell" | "buy" | string;
+  catalogue: Catalogue;
 }
 
 /** So many units of each item type, each item group, or anything in the store, within a rolling period or ever. */
@@ -153,6 +180,11 @@ export interface OrderRow {
   completedOn?: string | null;
   storeId?: number;
   channel?: "web" | "mail" | "manual" | string;
+  /** "buy": the other party sells to the store, off a Buy listing; absent or "sell" otherwise. */
+  side?: "sell" | "buy" | string;
+  postingId?: number;
+  /** A buy order: what the seller's contracts ask, once any have come in. */
+  contractedPrice?: number | null;
 }
 
 export interface WebOrderState {
@@ -190,7 +222,9 @@ export interface SiteEvent {
   at: string;
   webOrderId: string;
   buyer: SiteBuyer;
-  lines?: { typeId: number; units: number; unitPrice: number }[];
+  lines?: { typeId: number; units: number; unitPrice: number; postingId?: number }[];
+  /** "buy" for an offer to sell to a Buy listing; absent for an order. */
+  side?: "buy";
   contractTo?: { id: number; name: string; kind: "character" | "corporation" } | null;
   note?: string;
   /** The buyer's answer to "keep me posted by EVE mail"; absent means yes. */
