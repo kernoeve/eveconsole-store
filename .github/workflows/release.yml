@@ -1,5 +1,10 @@
 # A tag v<version> becomes a release carrying the built Worker and its manifest — what
 # EVE Console's Deploy and Update buttons fetch. The tag must match package.json's version.
+#
+# ⚠️ A tag with a hyphen (v0.2.0-rc.1) is published as a PRE-RELEASE. Released apps never deploy
+# or offer one; a development build of the app deploys it like any other, so a candidate is
+# tried on a real store, on Cloudflare, before anyone else can get it. Then bump package.json
+# and wrangler.toml to the plain version and tag that.
 
 name: Release
 
@@ -30,4 +35,7 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/index.js dist/manifest.json --title "${GITHUB_REF_NAME}" --generate-notes
+        run: |
+          pre=""
+          case "${GITHUB_REF_NAME}" in *-*) pre="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" dist/index.js dist/manifest.json --title "${GITHUB_REF_NAME}" --generate-notes $pre

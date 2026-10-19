@@ -73,3 +73,8 @@ a signed request; the site never calls the app.
 
 A release is a tag `v<version>` matching `package.json`. The workflow builds the bundle and
 attaches it to the release, and that is what EVE Console's Deploy and Update buttons fetch.
+
+A release candidate is a tag with a hyphen, `v0.2.0-rc.1` (with `package.json` and
+`wrangler.toml` saying `0.2.0-rc.1`). It is published as a pre-release: released copies of EVE
+Console never deploy or offer it, while a development build deploys it like any other release.
+Try it on a real store, then set the plain version and tag that.

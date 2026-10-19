@@ -20,7 +20,7 @@ export interface SyncRequest {
   /** The store's first Sell listing, for a site from before listings; one that reads
    * {@link listings} shows those instead. */
   catalogue: Catalogue;
-  /** Every listing in the store's order, each a tab (app 0.9.18+). Absent from an older app,
+  /** Every listing in the store's order, each a tab (app 0.9.17+). Absent from an older app,
    * whose one catalogue is then the only, Sell, listing. */
   listings?: Listing[];
   orders: OrderRow[];
