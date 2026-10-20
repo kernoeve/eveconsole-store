@@ -656,4 +656,26 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     await sync(two({ orders: [{ ...row, status: "completed", fulfilment: "contract", contractId: 555 }] }));
     expect(await read()).toContain(">Paid<");
   });
+
+  it("says where contracts are made when the store names a place: above the Buy listing, in the offer dialog, on My orders", async () => {
+    const at = { id: 1035466617946, name: "Perimeter - Tranquility Trading Tower" };
+    const row = { id: 71, ref: "OF2", buyerId: buyer.characterId, buyerType: "character", typeId: 3001, typeName: "Ore Thing",
+                  units: 2, totalPrice: 100_000, status: "pending", createdAt: "2026-09-19T00:00:00Z", side: "buy", postingId: 12 };
+    await sync(two({ store: storeWith({ buyLocation: at }), orders: [row] }));
+    const s = await signedIn();
+    const page = async (path: string) => await (await app.request(path, { headers: { Cookie: s.cookie } }, env)).text();
+
+    const buy = await page("/?list=12");
+    // Once above the list, once in the dialog's note.
+    expect(buy.split("Create all contracts at Perimeter - Tranquility Trading Tower.").length - 1).toBe(2);
+    expect(await page("/orders")).toContain(
+      "Make an Item Exchange contract to Receiving Corp at Perimeter - Tranquility Trading Tower, asking 100,000 ISK");
+    // The Sell listing says nothing about it.
+    expect(await page("/?list=11")).not.toContain("Create all contracts at");
+
+    // Named no longer: as before.
+    await sync(two({ orders: [row] }));
+    expect(await page("/?list=12")).not.toContain("Create all contracts at");
+    expect(await page("/orders")).toContain("Make an Item Exchange contract to Receiving Corp, asking 100,000 ISK");
+  });
 });

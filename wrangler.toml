@@ -16,7 +16,7 @@ main = "src/index.tsx"
 compatibility_date = "2025-06-01"
 
 [vars]
-SITE_VERSION = "0.2.0-rc.1"
+SITE_VERSION = "0.2.0-rc.2"
 
 
 

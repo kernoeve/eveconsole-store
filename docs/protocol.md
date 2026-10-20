@@ -64,7 +64,8 @@ in the next call.
         { "key": "pink-light", "name": "Pink (light)", "base": "light", "tokens": { "...": "..." } }
       ]
     },
-    "buyAssignee": { "id": 98000001, "kind": "corporation", "name": "Some Corp" }   // who Buy listings' contracts go to (site 0.2.0+); null/absent = no offers taken
+    "buyAssignee": { "id": 98000001, "kind": "corporation", "name": "Some Corp" },  // who Buy listings' contracts go to (site 0.2.0+); null/absent = no offers taken
+    "buyLocation": { "id": 60003760, "name": "Jita IV - Moon 4 - Caldari Navy Assembly Plant" }   // where sellers create those contracts, in the store's language; null/absent = not said (told, not enforced)
   },
   "catalogue": {                  // the store's first Sell listing, for a site before 0.2.0; a newer site reads "listings"
     "hash": "sha256 hex of the catalogue content",

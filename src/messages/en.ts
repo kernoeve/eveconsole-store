@@ -204,6 +204,8 @@ export const en = {
   tabBuyMark: "buying",
   /** Above a Buy listing. {to} is the character, corporation or alliance the contract goes to. "Item Exchange" is the game's name for the contract type: use the client's word in the language. */
   buyIntro: "The store buys these at the prices shown. Offer what you have; once the store confirms, make an Item Exchange contract to {to} asking the total.",
+  /** After buyIntro, the offer dialog's note and nothing else, when the store names where its contracts are made. {place} is a station or structure name as the game writes it. */
+  buyAt: "Create all contracts at {place}.",
   buyNotTaking: "The store is not taking offers at the moment.",
   signInToOffer: "Sign in with EVE to offer items. Prices are as listed at the moment you offer.",
   /** The price column of a Buy listing: what the store pays for one. */
@@ -230,6 +232,8 @@ export const en = {
   offerContractReceived: "Contract {id} received — waiting for the store to accept it",
   /** {to} is who the contract goes to, {amount} the ISK it should ask (iskAmount). */
   offerMakeContract: "Make an Item Exchange contract to {to}, asking {amount}",
+  /** offerMakeContract when the store names where contracts are made; {place} is the station or structure. */
+  offerMakeContractAt: "Make an Item Exchange contract to {to} at {place}, asking {amount}",
   /** On the buyer's orders, when they have sold to the store too: which way each went, dirYouBuy or dirYouSell. */
   colDirection: "Kind",
   dirYouBuy: "You buy",

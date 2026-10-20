@@ -1,6 +1,6 @@
 import type { FC } from "hono/jsx";
 import type { Session } from "../env";
-import type { Assignee, CatalogueItem, Limit, Listing, OrderRow, StoreInfo } from "../protocol";
+import type { Assignee, CatalogueItem, Limit, Listing, OrderRow, Place, StoreInfo } from "../protocol";
 import type { WebOrder } from "../orders";
 import { allowanceFor, allowanceWords, describeLimit } from "../limits";
 import { raw } from "hono/html";
@@ -95,6 +95,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
   // older app's one listing.
   const postingId = p.listing.id > 0 ? String(p.listing.id) : undefined;
   const to = p.store.buyAssignee?.name ?? "";
+  const place = p.store.buyLocation?.name ?? "";
 
   // ⚠️ A Buy listing counts nothing: what the store has is no business of someone selling to it.
   const showColumns = buying
@@ -113,7 +114,9 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
 
       {buying && (
         takesOffers
-          ? <p class="note" style="margin-top:12px">{t(lang, "buyIntro", { to })}</p>
+          ? <p class="note" style="margin-top:12px">
+              {t(lang, "buyIntro", { to })}{place && <> <strong>{t(lang, "buyAt", { place })}</strong></>}
+            </p>
           : <div class="flash info">{t(lang, "buyNotTaking")}</div>
       )}
       {!p.session && takesOffers && (
@@ -207,7 +210,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
         </table>
         {c.sections.every((s) => s.items.length === 0) && <div class="empty">{t(lang, "emptyList")}</div>}
       </div>
-      {canOrder && <ConfirmDialog lang={lang} csrf={p.session!.csrf} mailbox={mailbox} postingId={postingId} buying={buying} to={to} />}
+      {canOrder && <ConfirmDialog lang={lang} csrf={p.session!.csrf} mailbox={mailbox} postingId={postingId} buying={buying} to={to} place={place} />}
       {canOrder && <script dangerouslySetInnerHTML={{ __html: confirmScript(lang) }} />}
       <p class="faint">{t(lang, buying ? "offerNote" : "availabilityNote")}</p>
     </>
@@ -219,7 +222,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
  * has a mailbox — whether to be kept posted by EVE mail. The row's own form still posts on its
  * own where the script does not run, so nothing depends on it.
  */
-const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?: string; buying: boolean; to: string }> = (p) => (
+const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?: string; buying: boolean; to: string; place: string }> = (p) => (
   <dialog id="confirm" class="confirm">
     <form method="post" action="/orders">
       <input type="hidden" name="_csrf" value={p.csrf} />
@@ -247,6 +250,7 @@ const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?
       )}
       <p class="note">{p.buying
         ? t(p.lang, "confirmOfferNote", { to: p.to, myOrders: t(p.lang, "navMyOrders") })
+          + (p.place ? " " + t(p.lang, "buyAt", { place: p.place }) : "")
         : t(p.lang, "confirmNote", { myOrders: t(p.lang, "navMyOrders") })}</p>
       <div class="actions">
         <button type="button" class="link" data-close>{t(p.lang, "dialogCancel")}</button>
@@ -380,10 +384,12 @@ export interface OrdersProps {
   orders: OrderRow[];
   /** Who an offer's contract goes to, as the store last said. */
   buyAssignee?: Assignee | null;
+  /** Where that contract is to be made, when the store says. */
+  buyLocation?: Place | null;
 }
 
 /** Where an offer to sell stands: the contract to make, the contract made, or paid. */
-function offerState(lang: Lang, o: OrderRow, to: string): { cls: string; text: string } {
+function offerState(lang: Lang, o: OrderRow, to: string, place = ""): { cls: string; text: string } {
   switch (o.status) {
     case "completed": return { cls: "good", text: t(lang, "offerPaid") };
     case "canceled":  return { cls: "bad",  text: t(lang, "stateCancelled") };
@@ -392,12 +398,14 @@ function offerState(lang: Lang, o: OrderRow, to: string): { cls: string; text: s
         return o.contractedPrice != null && o.contractedPrice > o.totalPrice + 0.5
           ? { cls: "warn", text: t(lang, "offerContractAsksMore", { id: String(o.contractId), asked: formatIsk(lang, o.contractedPrice), agreed: formatIsk(lang, o.totalPrice) }) }
           : { cls: "info", text: t(lang, "offerContractReceived", { id: String(o.contractId) }) };
-      return { cls: "warn", text: t(lang, "offerMakeContract", { to, amount: formatIsk(lang, o.totalPrice) }) };
+      return { cls: "warn", text: place
+        ? t(lang, "offerMakeContractAt", { to, place, amount: formatIsk(lang, o.totalPrice) })
+        : t(lang, "offerMakeContract", { to, amount: formatIsk(lang, o.totalPrice) }) };
   }
 }
 
-function orderState(lang: Lang, o: OrderRow, to = ""): { cls: string; text: string } {
-  if (o.side === "buy") return offerState(lang, o, to);
+function orderState(lang: Lang, o: OrderRow, to = "", place = ""): { cls: string; text: string } {
+  if (o.side === "buy") return offerState(lang, o, to, place);
   switch (o.status) {
     case "completed": return { cls: "good", text: t(lang, "stateDelivered") };
     case "canceled":  return { cls: "bad",  text: t(lang, "stateCancelled") };
@@ -430,6 +438,7 @@ export const OrdersPage: FC<OrdersProps> = (p) => {
   const lang = p.lang;
   const typeName = (o: OrderRow) => o.typeName ?? t(lang, "typeFallback", { id: String(o.typeId) });
   const to = p.buyAssignee?.name ?? "";
+  const place = p.buyLocation?.name ?? "";
   // Which way each went, said only where the buyer has done both or sold at all: a column that
   // reads "You buy" on every row says nothing.
   const sold = p.orders.some((o) => o.side === "buy") || p.waiting.some((w) => w.lines.some((l) => l.side === "buy"));
@@ -486,7 +495,7 @@ export const OrdersPage: FC<OrdersProps> = (p) => {
           </thead>
           <tbody>
             {p.orders.map((o) => {
-              const st = orderState(lang, o, to);
+              const st = orderState(lang, o, to, place);
               return (
                 <tr>
                   <td class="num">{o.createdAt.slice(0, 10)}</td>

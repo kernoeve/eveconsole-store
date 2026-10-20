@@ -162,7 +162,7 @@ app.get("/orders", async (c) => {
     return refuse(c, store, session.name);
   return c.html(<Layout storeName={store?.info.name ?? t(common.lang, "storeFallback")} active="orders" asOf={asOf(store)} {...common}>
     <OrdersPage lang={common.lang} session={session} waiting={await waitingFor(c.env.DB, session.characterId)} orders={await ordersFor(c.env.DB, session)}
-                buyAssignee={store?.info.buyAssignee ?? null} />
+                buyAssignee={store?.info.buyAssignee ?? null} buyLocation={store?.info.buyLocation ?? null} />
   </Layout>);
 });
 

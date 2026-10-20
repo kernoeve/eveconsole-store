@@ -56,11 +56,20 @@ export interface StoreInfo {
   /** Who a Buy listing's sellers make their Item Exchange contracts out to; null or absent
    * when nobody is named, and then no offers are taken. */
   buyAssignee?: Assignee | null;
+  /** Where sellers are asked to create those contracts, named in the store's language; null or
+   * absent when the store does not say (app 0.9.17+). Told, not enforced. */
+  buyLocation?: Place | null;
 }
 
 export interface Assignee {
   id: number;
   kind: "character" | "corporation" | "alliance" | string;
+  name: string;
+}
+
+/** An NPC station or a structure, by its EVE id. */
+export interface Place {
+  id: number;
   name: string;
 }
 
