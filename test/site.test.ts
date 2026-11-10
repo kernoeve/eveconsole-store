@@ -678,4 +678,183 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     expect(await page("/?list=12")).not.toContain("Create all contracts at");
     expect(await page("/orders")).toContain("Make an Item Exchange contract to Receiving Corp, asking 100,000 ISK");
   });
+
+  it("names every place contracts may be made as alternatives, an older app's one as before, and follows a changed list", async () => {
+    const a = { id: 1035000000001, name: "Alpha Hub - Market Tower" };
+    const b = { id: 60000002, name: "Beta VII - Moon 2 - Trade Station" };
+    const c = { id: 1035000000003, name: "Gamma Keepstar" };
+    const row = { id: 73, ref: "OF3", buyerId: buyer.characterId, buyerType: "character", typeId: 3001, typeName: "Ore Thing",
+                  units: 1, totalPrice: 50_000, status: "pending", createdAt: "2026-09-19T00:00:00Z", side: "buy", postingId: 12 };
+    const s = await signedIn();
+    const page = async (path: string) => await (await app.request(path, { headers: { Cookie: s.cookie } }, env)).text();
+
+    // Two places: one sentence, above the list and in the offer dialog; and on My orders.
+    await sync(two({ store: storeWith({ buyLocation: a, buyLocations: [a, b] }), orders: [row] }));
+    let buy = await page("/?list=12");
+    expect(buy.split("Create each contract at Alpha Hub - Market Tower or Beta VII - Moon 2 - Trade Station.").length - 1).toBe(2);
+    expect(buy).not.toContain("Create all contracts at");
+    expect(await page("/orders")).toContain(
+      "Make an Item Exchange contract to Receiving Corp at Alpha Hub - Market Tower or Beta VII - Moon 2 - Trade Station, asking 50,000 ISK");
+
+    // An older app sends only buyLocation: that one place, worded as it always was. The store row
+    // changed and nothing else did, so this also shows the site wrote it.
+    await sync(two({ store: storeWith({ buyLocation: b }), orders: [row] }));
+    buy = await page("/?list=12");
+    expect(buy.split("Create all contracts at Beta VII - Moon 2 - Trade Station.").length - 1).toBe(2);
+    expect(buy).not.toContain("Alpha Hub");
+
+    // Three places: a list above the Buy listing, the language's "A, B, or C" in the dialog.
+    await sync(two({ store: storeWith({ buyLocation: a, buyLocations: [a, b, c] }), orders: [row] }));
+    buy = await page("/?list=12");
+    expect(buy).toContain("Create each contract at any one of these:");
+    expect(buy).toContain('<ul class="places"><li>Alpha Hub - Market Tower</li><li>Beta VII - Moon 2 - Trade Station</li><li>Gamma Keepstar</li></ul>');
+    expect(buy).toContain("Create each contract at Alpha Hub - Market Tower, Beta VII - Moon 2 - Trade Station, or Gamma Keepstar.");
+    expect(await page("/orders")).toContain("at Alpha Hub - Market Tower, Beta VII - Moon 2 - Trade Station, or Gamma Keepstar, asking 50,000 ISK");
+  });
+
+  // ── What a Buy listing still needs ────────────────────────────────────────
+  // Each test its own item types: offers stay in the shared database from one test to the next.
+
+  const needItem = (typeId: number, name: string, need?: { needed: number; wanted: number; onHand: number; inBuild: number; onOrder: number }) =>
+    ({ typeId, name, typeName: name, unitPrice: 1_000, inStock: 0, inBuild: 0, reserved: 0, ...(need ? { need } : {}) });
+  /** A Buy listing that tracks need; a fresh hash each time, so the site writes it. */
+  const needy = (items: ReturnType<typeof needItem>[], showNeed = true) => ({
+    hash: "need-" + Math.random().toString(36).slice(2), asOf: "2026-09-19T20:00:00Z",
+    showInStock: true, showInBuild: true, showReserved: true, showCompletionDate: false, colourByState: false, showNeed,
+    sections: [{ name: "Wanted for builds", items }],
+  });
+  const withNeeds = (cat: ReturnType<typeof needy>, over: Partial<SyncRequest> = {}) => two({
+    listings: [{ id: 11, title: "Hulls", side: "sell", catalogue: selling }, { id: 14, title: "Needs", side: "buy", catalogue: cat }],
+    ...over,
+  });
+  /** The row of the page that shows this item. */
+  const rowOf = (page: string, name: string) => page.split("<tr").find((r) => r.includes(`<div>${name}</div>`)) ?? "";
+  const flashOf = (r: Response) => JSON.parse(decodeURIComponent(/flash=([^;]+)/.exec(r.headers.get("Set-Cookie") ?? "")?.[1] ?? "{}")).text;
+
+  it("shows what a Buy listing still needs: the number, a bar of what is covered, and no offers once nothing is", async () => {
+    await sync(withNeeds(needy([
+      needItem(4101, "Need Full", { needed: 100, wanted: 100, onHand: 0, inBuild: 0, onOrder: 0 }),
+      needItem(4102, "Need Part", { needed: 30, wanted: 120, onHand: 50, inBuild: 25, onOrder: 15 }),
+      needItem(4103, "Need None", { needed: 0, wanted: 40, onHand: 40, inBuild: 0, onOrder: 0 }),
+      needItem(4104, "Need Unknown"),
+    ])));
+    const s = await signedIn();
+    const page = await (await app.request("/?list=14", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(page).toContain(">Needed<");
+    expect(page).toContain("the bar shows how much");
+    expect(page).not.toContain("In stock");           // the counts stay hidden on a Buy tab
+
+    const full = rowOf(page, "Need Full");
+    expect(full).toContain('aria-valuenow="0"');
+    expect(full).toContain('style="width:0%"');
+    expect(full).toContain('max="100"');
+
+    const part = rowOf(page, "Need Part");
+    expect(part).toContain('role="progressbar"');
+    expect(part).toContain('aria-valuemax="120"');
+    expect(part).toContain('aria-valuenow="90"');
+    expect(part).toContain('aria-valuetext="90 of 120 covered"');
+    expect(part).toContain('style="width:75%"');
+    expect(part).toContain('title="Wanted 120 · on hand 50 · in build 25 · on order 15 · offered 0"');
+    expect(part).toContain('max="30"');
+    expect(part).toContain('data-need="We still need 30 units."');
+    expect(page).toContain('data-f="need"');
+
+    const none = rowOf(page, "Need None");
+    expect(none).toContain('class="ineligible"');
+    expect(none).toContain("No longer needed");
+    expect(none).not.toContain('<form class="order"');
+    expect(none).toContain('style="width:100%"');
+
+    // An item the app sends no need for: nothing to show, nothing capped.
+    const unknown = rowOf(page, "Need Unknown");
+    expect(unknown).toContain("—");
+    expect(unknown).not.toContain("progressbar");
+    expect(unknown).toContain('max="10000"');
+    expect(unknown).not.toContain("data-need");
+
+    // Nothing of it on the Sell tab.
+    expect(await (await app.request("/?list=11", { headers: { Cookie: s.cookie } }, env)).text()).not.toContain(">Needed<");
+    // Signed out, with no offer column: the row is still dimmed, and says why in the Needed column.
+    const out = rowOf(await (await app.request("/?list=14", {}, env)).text(), "Need None");
+    expect(out).toContain('class="ineligible"');
+    expect(out).toContain("No longer needed");
+  });
+
+  it("caps offers at the need when it is not shown, and says how many only when refusing", async () => {
+    await sync(withNeeds(needy([
+      needItem(4111, "Hidden Some", { needed: 5, wanted: 20, onHand: 10, inBuild: 5, onOrder: 0 }),
+      needItem(4112, "Hidden Done", { needed: 0, wanted: 20, onHand: 20, inBuild: 0, onOrder: 0 }),
+    ], false)));
+    const s = await signedIn();
+    const page = await (await app.request("/?list=14", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(page).not.toContain(">Needed<");
+    expect(page).not.toContain("progressbar");
+    expect(page).not.toContain("data-need");
+    const some = rowOf(page, "Hidden Some");
+    expect(some).toContain('max="10000"');                   // the number is not given away
+    const done = rowOf(page, "Hidden Done");
+    expect(done).toContain('class="ineligible"');
+    expect(done).toContain("No longer needed");
+    expect(done).not.toContain('<form class="order"');
+
+    const before = await webOrders();
+    const over = await post(s.cookie, { typeId: "4111", units: "6", postingId: "14" });
+    expect(over.headers.get("Location")).toBe("/?list=14");
+    expect(flashOf(over)).toBe("The store needs only 5 more units of that item.");
+    expect(await webOrders()).toBe(before);
+
+    const zero = await post(s.cookie, { typeId: "4112", units: "1", postingId: "14" });
+    expect(zero.headers.get("Location")).toBe("/?list=14");
+    expect(flashOf(zero)).toBe("The store no longer needs that item.");
+    expect(await webOrders()).toBe(before);
+
+    // Exactly what is left is taken; after it, nothing more is.
+    const exact = await post(s.cookie, { typeId: "4111", units: "5", postingId: "14" });
+    expect(exact.headers.get("Location")).toBe("/orders");
+    expect(await webOrders()).toBe(before + 1);
+    const after = await post(s.cookie, { typeId: "4111", units: "1", postingId: "14" });
+    expect(after.headers.get("Location")).toBe("/?list=14");
+    expect(flashOf(after)).toBe("The store no longer needs that item.");
+    expect(rowOf(await (await app.request("/?list=14", { headers: { Cookie: s.cookie } }, env)).text(), "Hidden Some")).toContain('class="ineligible"');
+  });
+
+  it("takes unanswered offers off the need, and not ones the app has booked", async () => {
+    const need = { needed: 10, wanted: 10, onHand: 0, inBuild: 0, onOrder: 0 };
+    await sync(withNeeds(needy([needItem(4121, "Counted Thing", need)])));
+    const s = await signedIn();
+    const page = async () => rowOf(await (await app.request("/?list=14", { headers: { Cookie: s.cookie } }, env)).text(), "Counted Thing");
+    expect(await page()).toContain('max="10"');
+
+    expect((await post(s.cookie, { typeId: "4121", units: "4", postingId: "14" })).headers.get("Location")).toBe("/orders");
+    let row = await page();
+    expect(row).toContain('max="6"');
+    expect(row).toContain("offered 4");
+    expect(row).toContain('aria-valuenow="4"');
+    expect(flashOf(await post(s.cookie, { typeId: "4121", units: "7", postingId: "14" }))).toBe("The store needs only 6 more units of that item.");
+
+    // The app books it: its push names the web order, and its need now counts the four on order.
+    const web = await env.DB.prepare(`SELECT id FROM web_orders WHERE state = 'submitted' AND lines_json LIKE '%"typeId":4121%'`).first<{ id: string }>();
+    const booked = { id: 9121, ref: "NEED1", webOrderId: web!.id, buyerId: buyer.characterId, buyerType: "character", typeId: 4121, units: 4,
+                     totalPrice: 4_000, status: "pending", createdAt: new Date().toISOString(), side: "buy", postingId: 14 };
+    await sync(withNeeds(needy([needItem(4121, "Counted Thing", { ...need, needed: 6, onOrder: 4 })]), { orders: [booked] }));
+    row = await page();
+    expect(row).toContain('max="6"');                         // not 2: the booked four are in the need already
+    expect(row).toContain("on order 4 · offered 0");
+    expect((await post(s.cookie, { typeId: "4121", units: "6", postingId: "14" })).headers.get("Location")).toBe("/orders");
+  });
+
+  it("refuses over the need when called directly, and leaves items without one uncapped", async () => {
+    const listing = { id: 14, title: "Needs", side: "buy", catalogue: needy([
+      needItem(4131, "Direct Need", { needed: 3, wanted: 9, onHand: 6, inBuild: 0, onOrder: 0 }),
+      needItem(4132, "Direct Free"),
+    ]) };
+    const over = await placeOrder(env.DB, buyer, listing, 4131, 4, "", true);
+    expect(over).toEqual({ ok: false, reason: { key: "overNeed", args: { n: 3 } } });
+    expect((await placeOrder(env.DB, buyer, listing, 4131, 3, "", true)).ok).toBe(true);
+    expect(await placeOrder(env.DB, buyer, listing, 4131, 1, "", true)).toEqual({ ok: false, reason: { key: "notNeeded" } });
+    expect((await placeOrder(env.DB, buyer, listing, 4132, 10_000, "", true)).ok).toBe(true);
+    // The same need on another listing is that listing's own.
+    expect((await placeOrder(env.DB, buyer, { ...listing, id: 15 }, 4131, 3, "", true)).ok).toBe(true);
+  });
 });

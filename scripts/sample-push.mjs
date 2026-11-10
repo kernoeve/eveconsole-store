@@ -94,6 +94,12 @@ const request = {
     },
     // Who sellers make a Buy listing's Item Exchange contracts out to.
     buyAssignee: { id: 98000001, kind: "corporation", name: "Sample Corp" },
+    // Where sellers may make them, any of these (site 0.3.0+); the first also as buyLocation, for an older site.
+    buyLocation: { id: 60003760, name: "Jita IV - Moon 4 - Caldari Navy Assembly Plant" },
+    buyLocations: [
+      { id: 60003760, name: "Jita IV - Moon 4 - Caldari Navy Assembly Plant" },
+      { id: 60008494, name: "Amarr VIII (Oris) - Emperor Family Academy" },
+    ],
   },
   catalogue: {
     hash: "sample-" + new Date().toISOString().slice(0, 13),
@@ -137,6 +143,11 @@ const request = {
   webOrders: [],
 };
 
+// What the production plan still wants of a Buy item (site 0.3.0+): needed = wanted less what is
+// held, being built and already on booked offers, never below none.
+const need = (wanted, onHand = 0, inBuild = 0, onOrder = 0) =>
+  ({ needed: Math.max(0, wanted - onHand - inBuild - onOrder), wanted, onHand, inBuild, onOrder });
+
 // The listings, a tab each: the price list above, and what the store buys.
 if (process.env.LISTINGS !== "0") {
   request.listings = [
@@ -144,19 +155,24 @@ if (process.env.LISTINGS !== "0") {
     { id: 102, title: "", side: "buy", catalogue: {
       hash: "sample-buy-" + new Date().toISOString().slice(0, 13), asOf: new Date().toISOString(),
       showInStock: false, showInBuild: false, showReserved: false, showCompletionDate: false, colourByState: false,
+      showNeed: true,
       sections: [
         { name: "Ice products", items: [
-          item(16272, "Heavy Water", "Ice Product", 80),
-          item(16273, "Liquid Ozone", "Ice Product", 180),
+          { ...item(16272, "Heavy Water", "Ice Product", 80), need: need(50_000) },                          // all of it needed
+          { ...item(16273, "Liquid Ozone", "Ice Product", 180), need: need(40_000, 12_000, 8_000, 5_000) },  // partly covered
         ] },
         { name: "Salvage", items: [
-          item(25595, "Alloyed Tritanium Bar", "Salvaged Materials", 9_500),
+          { ...item(25595, "Alloyed Tritanium Bar", "Salvaged Materials", 9_500), need: need(600, 450, 0, 150) },   // nothing more
           item(25598, "Tripped Power Circuit", "Salvaged Materials", null),
         ] },
       ],
     } },
   ];
-} else delete request.store.buyAssignee;
+} else {
+  delete request.store.buyAssignee;
+  delete request.store.buyLocation;
+  delete request.store.buyLocations;
+}
 
 async function signedCall(path, method, payload) {
   const body = JSON.stringify(payload);

@@ -146,6 +146,8 @@ export const fr: Translation = {
   tabBuyMark: "achat",
   buyIntro: "La boutique achète ces objets aux prix affichés. Proposez ce que vous avez ; une fois la boutique d'accord, établissez pour {to} un contrat de troc demandant le total.",
   buyAt: "Créez tous les contrats à {place}.",
+  buyAtAny: "Créez chaque contrat à {places}.",
+  buyAtList: "Créez chaque contrat à l'un de ces endroits :",
   buyNotTaking: "La boutique n'accepte pas d'offres pour le moment.",
   signInToOffer: "Connectez-vous avec EVE pour proposer des objets. Les prix sont ceux affichés au moment de votre offre.",
   colWePay: "Nous payons",
@@ -168,4 +170,14 @@ export const fr: Translation = {
   colDirection: "Sens",
   dirYouBuy: "Vous achetez",
   dirYouSell: "Vous vendez",
+
+  // ── What a Buy listing still needs ──────────────────────────────────────────
+  colNeeded: "Besoin",
+  needNote: "« Besoin » indique combien d'unités de chaque objet la boutique cherche encore ; la barre montre la part de ce qu'elle prévoit qui est déjà couverte.",
+  needBreakdown: "Prévu {wanted} · en stock {onHand} · en production {inBuild} · commandé {onOrder} · proposé {offered}",
+  needCovered: "{covered} sur {wanted} couverts",
+  noLongerNeeded: "Plus recherché",
+  needStill: { one: "Il nous faut encore {n} unité.", other: "Il nous faut encore {n} unités." },
+  notNeeded: "La boutique n'a plus besoin de cet objet.",
+  overNeed: { one: "La boutique n'a plus besoin que de {n} unité de cet objet.", other: "La boutique n'a plus besoin que de {n} unités de cet objet." },
 };

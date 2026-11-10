@@ -59,6 +59,10 @@ export interface StoreInfo {
   /** Where sellers are asked to create those contracts, named in the store's language; null or
    * absent when the store does not say (app 0.9.17+). Told, not enforced. */
   buyLocation?: Place | null;
+  /** Every place sellers may create those contracts, in order, named in the store's language
+   * (app 0.9.19+); buyLocation is always the first of them, for an older site. Null or absent:
+   * none, or an older app, whose buyLocation is then the only one. */
+  buyLocations?: Place[] | null;
 }
 
 export interface Assignee {
@@ -139,6 +143,10 @@ export interface Catalogue {
   colourInStock?: string;
   colourInBuild?: string;
   colourNone?: string;
+  /** A Buy listing that tracks need: whether sellers see how many each item still needs (app
+   * 0.9.19+). The cap on offers holds wherever an item carries {@link CatalogueItem.need},
+   * shown or not. */
+  showNeed?: boolean;
   sections: CatalogueSection[];
 }
 
@@ -163,6 +171,27 @@ export interface CatalogueItem {
   reserved: number;
   earliestJobEnd?: string | null;
   colour?: string | null;
+  /** On a Buy listing that tracks need: how many the store's production plan still wants (app
+   * 0.9.19+). Absent = no cap, as before. */
+  need?: Need | null;
+}
+
+/**
+ * What a Buy listing's item is still wanted for, in units, as of the catalogue's asOf. All
+ * whole numbers, none negative. Offers the app has booked are inside onOrder, so the site
+ * takes off only its own offers the app has not answered yet.
+ */
+export interface Need {
+  /** max(0, wanted − onHand − inBuild − onOrder): what is still wanted. */
+  needed: number;
+  /** What the production plan needs in all. */
+  wanted: number;
+  /** Held already. */
+  onHand: number;
+  /** Coming out of running industry jobs. */
+  inBuild: number;
+  /** On open offers to this store the app has booked. */
+  onOrder: number;
 }
 
 export interface OrderRow {

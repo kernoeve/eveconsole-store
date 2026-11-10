@@ -146,6 +146,8 @@ export const ja: Translation = {
   tabBuyMark: "買取",
   buyIntro: "ストアは以下のアイテムを表示価格で買い取ります。お持ちのものを申し込んでください。ストアが確認したら、{to} 宛てに合計額を要求するアイテム交換契約を作成してください。",
   buyAt: "契約はすべて{place}で作成してください。",
+  buyAtAny: "各契約は{places}で作成してください。",
+  buyAtList: "各契約は次のいずれかの場所で作成してください：",
   buyNotTaking: "ストアは現在、売却申込を受け付けていません。",
   signInToOffer: "アイテムを売却するにはEVEでログインしてください。価格は、申し込んだ時点で表示されている価格になります。",
   colWePay: "買取価格",
@@ -168,4 +170,14 @@ export const ja: Translation = {
   colDirection: "種別",
   dirYouBuy: "購入",
   dirYouSell: "売却",
+
+  // ── What a Buy listing still needs ──────────────────────────────────────────
+  colNeeded: "必要数",
+  needNote: "「必要数」は、ストアが各アイテムをあと何個求めているかです。バーは、予定数のうちすでに確保できている割合を示します。",
+  needBreakdown: "予定 {wanted} · 手持ち {onHand} · 製造中 {inBuild} · 発注済み {onOrder} · 申込中 {offered}",
+  needCovered: "{wanted}個中{covered}個確保済み",
+  noLongerNeeded: "買取終了",
+  needStill: "あと{n}個必要です。",
+  notNeeded: "ストアはこのアイテムをもう必要としていません。",
+  overNeed: "ストアが必要としているこのアイテムは、あと{n}個だけです。",
 };

@@ -206,6 +206,11 @@ export const en = {
   buyIntro: "The store buys these at the prices shown. Offer what you have; once the store confirms, make an Item Exchange contract to {to} asking the total.",
   /** After buyIntro, the offer dialog's note and nothing else, when the store names where its contracts are made. {place} is a station or structure name as the game writes it. */
   buyAt: "Create all contracts at {place}.",
+  /** buyAt when the store names two or more places, any of which will do. {places} is the names already joined
+   *  as the language lists alternatives ("A or B", "A, B, or C"); also used where the sentence carries them all. */
+  buyAtAny: "Create each contract at {places}.",
+  /** Above a Buy listing when the store names three or more places: followed by the places as a bulleted list. */
+  buyAtList: "Create each contract at any one of these:",
   buyNotTaking: "The store is not taking offers at the moment.",
   signInToOffer: "Sign in with EVE to offer items. Prices are as listed at the moment you offer.",
   /** The price column of a Buy listing: what the store pays for one. */
@@ -238,4 +243,23 @@ export const en = {
   colDirection: "Kind",
   dirYouBuy: "You buy",
   dirYouSell: "You sell",
+
+  // ── What a Buy listing still needs ──────────────────────────────────────────
+  /** A Buy listing's column: how many more of each item the store wants, a number over a small bar. */
+  colNeeded: "Needed",
+  /** Under a Buy listing whose need is shown: how to read the colNeeded column. */
+  needNote: "Needed is how many more of each item the store wants; the bar shows how much of what it plans to use is already covered.",
+  /** Hovering the colNeeded cell: where the number comes from, each a number of units. "Wanted" is what the store's
+   *  production plan needs in all; "offered" are offers like this one the store has not answered yet. */
+  needBreakdown: "Wanted {wanted} · on hand {onHand} · in build {inBuild} · on order {onOrder} · offered {offered}",
+  /** The bar, read aloud by a screen reader: {covered} units of the {wanted} planned are covered already. */
+  needCovered: "{covered} of {wanted} covered",
+  /** In place of the offer button (or the number) when the store needs no more of an item. */
+  noLongerNeeded: "No longer needed",
+  /** In the offer dialog, when the store shows its need: {n} more units are still wanted. */
+  needStill: { one: "We still need {n} unit.", other: "We still need {n} units." },
+  /** After an offer the need refuses. */
+  notNeeded: "The store no longer needs that item.",
+  /** {n} is the most the store takes of the item now. */
+  overNeed: { one: "The store needs only {n} more unit of that item.", other: "The store needs only {n} more units of that item." },
 } as const satisfies Record<string, Message>;

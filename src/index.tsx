@@ -7,7 +7,7 @@ import { beginLogin, csrfOk, finishLogin, logout, safeNext, sessionMiddleware } 
 import { bannerHash, buyerTheme, ensureSchema, loadStore, saveBuyerTheme, storeLanguage, type StoreState } from "./db";
 import { langOf, t, tell, type Lang } from "./i18n";
 import { isAllowed, restrictedText } from "./policy";
-import { cancelOrder, cancelWebOrder, ordersFor, pendingFor, pendingUnits, placeOrder, waitingFor } from "./orders";
+import { cancelOrder, cancelWebOrder, offeredUnits, ordersFor, pendingFor, pendingUnits, placeOrder, waitingFor } from "./orders";
 import { allowanceFor, describeLimit, orderedByScope } from "./limits";
 
 import { handleBanner, handleSync, handleVersion } from "./sync";
@@ -139,7 +139,8 @@ app.get("/", async (c) => {
     : null;
   return c.html(<Layout storeName={store.info.name} active="catalogue" asOf={asOf(store)} {...common}>
     <CataloguePage lang={lang} store={store.info} listing={listing} listings={store.listings}
-                   pending={await pendingUnits(c.env.DB)} session={session} allowed={allowed}
+                   pending={await pendingUnits(c.env.DB)} offered={buying ? await offeredUnits(c.env.DB) : undefined}
+                   session={session} allowed={allowed}
                    limit={limit} taken={taken} banner={await bannerHash(c.env.DB)} />
   </Layout>);
 
@@ -162,7 +163,8 @@ app.get("/orders", async (c) => {
     return refuse(c, store, session.name);
   return c.html(<Layout storeName={store?.info.name ?? t(common.lang, "storeFallback")} active="orders" asOf={asOf(store)} {...common}>
     <OrdersPage lang={common.lang} session={session} waiting={await waitingFor(c.env.DB, session.characterId)} orders={await ordersFor(c.env.DB, session)}
-                buyAssignee={store?.info.buyAssignee ?? null} buyLocation={store?.info.buyLocation ?? null} />
+                buyAssignee={store?.info.buyAssignee ?? null} buyLocation={store?.info.buyLocation ?? null}
+                buyLocations={store?.info.buyLocations ?? null} />
   </Layout>);
 });
 

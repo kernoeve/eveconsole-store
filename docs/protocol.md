@@ -65,13 +65,18 @@ in the next call.
       ]
     },
     "buyAssignee": { "id": 98000001, "kind": "corporation", "name": "Some Corp" },  // who Buy listings' contracts go to (site 0.2.0+); null/absent = no offers taken
-    "buyLocation": { "id": 60003760, "name": "Jita IV - Moon 4 - Caldari Navy Assembly Plant" }   // where sellers create those contracts, in the store's language; null/absent = not said (told, not enforced)
+    "buyLocation": { "id": 60003760, "name": "Jita IV - Moon 4 - Caldari Navy Assembly Plant" },  // where sellers create those contracts, in the store's language; null/absent = not said (told, not enforced); with buyLocations, always its first
+    "buyLocations": [               // every place sellers may create them, in order, any of which will do (site 0.3.0+, app 0.9.19+); null/absent = just buyLocation
+      { "id": 60003760, "name": "Jita IV - Moon 4 - Caldari Navy Assembly Plant" },
+      { "id": 60008494, "name": "Amarr VIII (Oris) - Emperor Family Academy" }
+    ]
   },
   "catalogue": {                  // the store's first Sell listing, for a site before 0.2.0; a newer site reads "listings"
     "hash": "sha256 hex of the catalogue content",
     "asOf": "2026-09-19T20:00:00Z",
     "showInStock": true, "showInBuild": true, "showReserved": true, "showCompletionDate": false,
     "colourByState": false, "colourInStock": "#4a9a5a", "colourInBuild": "#c8a84b", "colourNone": "#888899",
+    "showNeed": true,             // a Buy listing that tracks need: sellers see each item's "need" (site 0.3.0+, app 0.9.19+); the cap holds either way
     "sections": [
       {
         "name": "Hulls", "prefix": "", "headerColour": null, "rowColour": null,
@@ -84,7 +89,14 @@ in the next call.
             "unitPrice": 1100000,         // per unit, already rounded as the price list rounds; null = not for sale
             "inStock": 5, "inBuild": 2, "reserved": 1,
             "earliestJobEnd": null,       // ISO time or null
-            "colour": null
+            "colour": null,
+            "need": {                     // Buy listings that track need only (site 0.3.0+, app 0.9.19+); absent = no cap
+              "needed": 30,               // max(0, wanted − onHand − inBuild − onOrder): still wanted as of asOf
+              "wanted": 120,              // what the production plan (worklist) needs in all
+              "onHand": 50,               // held now
+              "inBuild": 25,              // coming out of running industry jobs
+              "onOrder": 15               // on open offers to this store the app has booked
+            }
           }
         ]
       }
@@ -224,6 +236,12 @@ field leaves it.
   out and refuses what is over; the app holds anything over for review when it books.
 - Sends the banner's bytes only when the reply's `bannerSha256` is not the store's, and says
   `"banner": null` when the store has none.
+- On a Buy listing that tracks need (app 0.9.19+), gives each item `need` (`needed`, `wanted`,
+  `onHand`, `inBuild`, `onOrder`, whole units, none negative, `needed` = max(0, `wanted` −
+  `onHand` − `inBuild` − `onOrder`)), counts the offers it has booked on this store in
+  `onOrder`, and sets `showNeed` when sellers may see the figures. The figures are part of the
+  catalogue's `hash`, so a change in them is pushed. The site refuses offers over what is left;
+  the app re-checks the need when it books, since two offers at the same moment can both pass.
 
 
 **The site**
@@ -244,4 +262,15 @@ field leaves it.
   (`ssoClientId`, `ssoKeyFingerprint`), so the app can say when sign-in is not set up or the keys
   are not the ones it holds.
 - Shows the blurb as HTML, tidied as above, and the banner it holds above the price list.
+- Caps offers on a Buy item that carries `need` (site 0.3.0+) at `needed` less the units on its
+  own offers for that listing and type the app has not answered yet (`submitted` or `review`;
+  booked ones are in `onOrder` already). At none the row is greyed out and takes no offer.
+  With `showNeed` a Needed column shows what is left, with a bar of how much of `wanted` is
+  covered, and the offer box and dialog stop at it; without it the number is said only when an
+  offer is refused for asking more. An item without `need` is not capped.
+- Names every place in `store.buyLocations` (site 0.3.0+) wherever it named `buyLocation` —
+  above a Buy listing, in the offer dialog, on My orders — as alternatives joined the way the
+  store's language lists them ("A or B", "A, B, or C"); above a Buy listing, three or more are a
+  bulleted list. Without `buyLocations` it names `buyLocation` alone, as before. The store info
+  is compared whole on every push, so a changed list is written straight away.
 

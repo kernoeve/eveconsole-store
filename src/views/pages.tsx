@@ -1,11 +1,23 @@
 import type { FC } from "hono/jsx";
 import type { Session } from "../env";
 import type { Assignee, CatalogueItem, Limit, Listing, OrderRow, Place, StoreInfo } from "../protocol";
-import type { WebOrder } from "../orders";
+import { MAX_UNITS, needOf, offerKey, stillNeeded, type WebOrder } from "../orders";
 import { allowanceFor, allowanceWords, describeLimit } from "../limits";
 import { raw } from "hono/html";
 import { renderBlurb } from "../markup";
-import { formatIsk, formatNumber, t, template, type Lang } from "../i18n";
+import { formatIsk, formatNumber, formatOr, t, template, type Lang } from "../i18n";
+
+/** Where sellers may create their contracts: every place the app names, or an older app's one. */
+export function buyPlaces(info: Pick<StoreInfo, "buyLocation" | "buyLocations"> | null | undefined): string[] {
+  const list = info?.buyLocations?.length ? info.buyLocations : info?.buyLocation ? [info.buyLocation] : [];
+  return [...new Set(list.map((p) => p?.name ?? "").filter((n) => n !== ""))];
+}
+
+/** The sentence saying where: one place as it always was, several as the language's "A or B". */
+function buyAtWords(lang: Lang, places: string[]): string {
+  if (places.length === 0) return "";
+  return places.length === 1 ? t(lang, "buyAt", { place: places[0] }) : t(lang, "buyAtAny", { places: formatOr(lang, places) });
+}
 
 
 function iconUrl(typeId: number): string {
@@ -36,6 +48,9 @@ export interface CatalogueProps {
   listings: Listing[];
   /** Units of each type in web orders the store has not yet confirmed: taken off "available". */
   pending: Map<number, number>;
+  /** Units on offers to sell the store has not answered yet, by listing and type (offerKey):
+   * taken off what a Buy item still needs. */
+  offered?: Map<string, number>;
   session: Session | null;
   allowed: boolean;
   /** The store's purchase limit, and what this buyer has taken against it (only when signed in and allowed). */
@@ -56,6 +71,18 @@ function stateOf(lang: Lang, i: CatalogueItem, available: number): { cls: string
   if (i.inBuild > 0) return { cls: "warn", text: t(lang, "stateInBuild", { n: i.inBuild }) };
   return { cls: "muted", text: t(lang, "stateBuiltToOrder") };
 }
+
+/** How much of what the store plans to use is covered already, as a thin bar under the number
+ * still needed: full when nothing more is wanted. */
+const NeedBar: FC<{ lang: Lang; wanted: number; left: number }> = (p) => {
+  const covered = Math.min(p.wanted, Math.max(0, p.wanted - p.left));
+  return (
+    <div class="needbar" role="progressbar" aria-valuemin="0" aria-valuemax={String(p.wanted)} aria-valuenow={String(covered)}
+         aria-valuetext={t(p.lang, "needCovered", { covered, wanted: p.wanted })}>
+      <span style={`width:${Math.floor((covered * 100) / p.wanted)}%`}></span>
+    </div>
+  );
+};
 
 /** The owner's words, as HTML. With block tags the owner has done the layout; without them a
  * blank line starts a paragraph and every other newline is kept, as plain text always was. */
@@ -95,12 +122,16 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
   // older app's one listing.
   const postingId = p.listing.id > 0 ? String(p.listing.id) : undefined;
   const to = p.store.buyAssignee?.name ?? "";
-  const place = p.store.buyLocation?.name ?? "";
+  const places = buyPlaces(p.store);
 
   // ⚠️ A Buy listing counts nothing: what the store has is no business of someone selling to it.
   const showColumns = buying
     ? { stock: false, build: false, reserved: false }
     : { stock: c.showInStock, build: c.showInBuild, reserved: c.showReserved };
+  // A Buy listing that tracks need shows it only when the store says so; the cap holds either way.
+  const showNeed = buying && c.showNeed === true;
+  const offered = p.offered ?? new Map<string, number>();
+  const listingId = p.listing.id > 0 ? p.listing.id : undefined;
   return (
     <>
       {p.banner && (
@@ -114,9 +145,15 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
 
       {buying && (
         takesOffers
-          ? <p class="note" style="margin-top:12px">
-              {t(lang, "buyIntro", { to })}{place && <> <strong>{t(lang, "buyAt", { place })}</strong></>}
-            </p>
+          ? <div class="note" style="margin-top:12px">
+              {t(lang, "buyIntro", { to })}
+              {/* One or two places in the sentence; three or more, long station names each, as a list. */}
+              {places.length > 0 && places.length < 3 && <> <strong>{buyAtWords(lang, places)}</strong></>}
+              {places.length >= 3 && <>
+                {" "}<strong>{t(lang, "buyAtList")}</strong>
+                <ul class="places">{places.map((name) => <li>{name}</li>)}</ul>
+              </>}
+            </div>
           : <div class="flash info">{t(lang, "buyNotTaking")}</div>
       )}
       {!p.session && takesOffers && (
@@ -137,6 +174,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
             <tr>
               <th>{t(lang, "colItem")}</th>
               <th class="num">{t(lang, buying ? "colWePay" : "colPrice")}</th>
+              {showNeed && <th class="num">{t(lang, "colNeeded")}</th>}
               {!buying && <th>{t(lang, "colAvailability")}</th>}
               {showColumns.stock && <th class="num optional">{t(lang, "colInStock")}</th>}
               {showColumns.build && <th class="num optional">{t(lang, "colInBuild")}</th>}
@@ -156,7 +194,15 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                   const st = stateOf(lang, i, available);
                   // Against the store's limit, when it has one and the buyer is known.
                   const a = p.limit && p.taken ? allowanceFor(p.limit, p.taken, i.typeId, i.groupId) : null;
-                  const blocked = a !== null && a.remaining === 0 && i.unitPrice != null;
+                  // On a Buy listing that tracks need: how many more the store takes, null for no cap.
+                  const need = buying ? needOf(i) : null;
+                  const left = buying ? stillNeeded(i, listingId, offered) : null;
+                  const gone = left === 0 && i.unitPrice != null;
+                  const blocked = (a !== null && a.remaining === 0 && i.unitPrice != null) || gone;
+                  // "No longer needed" goes where the offer button would be, else beside the number, else under the price.
+                  const goneNote = <span class="state muted">{t(lang, "noLongerNeeded")}</span>;
+                  const goneAt = !gone ? null : canOrder ? "action" : showNeed ? "need" : "price";
+                  const max = Math.min(MAX_UNITS, a ? a.remaining : MAX_UNITS, showNeed && left !== null ? left : MAX_UNITS);
 
                   const rowStyle = c.colourByState && !buying
                     ? `color:${available > 0 ? c.colourInStock : i.inBuild > 0 ? c.colourInBuild : c.colourNone}`
@@ -164,7 +210,23 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                   return (
                     <tr style={rowStyle} class={blocked ? "ineligible" : undefined}>
                       <td><Item typeId={i.typeId} name={i.name} group={i.groupName} /></td>
-                      <td class="num">{i.unitPrice != null ? formatIsk(lang, i.unitPrice) : <span class="dim">{t(lang, buying ? "notBuying" : "notForSale")}</span>}</td>
+                      <td class="num">
+                        {i.unitPrice != null ? formatIsk(lang, i.unitPrice) : <span class="dim">{t(lang, buying ? "notBuying" : "notForSale")}</span>}
+                        {goneAt === "price" && <div>{goneNote}</div>}
+                      </td>
+                      {showNeed && (
+                        <td class="num need" title={need ? t(lang, "needBreakdown", {
+                          wanted: need.wanted, onHand: need.onHand, inBuild: need.inBuild, onOrder: need.onOrder,
+                          offered: offered.get(offerKey(listingId, i.typeId)) ?? 0,
+                        }) : undefined}>
+                          {need === null || left === null
+                            ? <span class="dim">—</span>
+                            : <>
+                                {goneAt === "need" ? goneNote : formatNumber(lang, left)}
+                                {need.wanted > 0 && <NeedBar lang={lang} wanted={need.wanted} left={left} />}
+                              </>}
+                        </td>
+                      )}
                       {!buying && <td>
                         {blocked ? (
                           <span class="state muted">{t(lang, "limitReached")}</span>
@@ -182,19 +244,23 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                       {showColumns.build && <td class="num optional">{formatNumber(lang, i.inBuild)}</td>}
                       {showColumns.reserved && <td class="num optional">{formatNumber(lang, i.reserved)}</td>}
                       {canOrder && (
-                        <td>
+                        <td class={goneAt === "action" ? "right" : undefined}>
+                          {goneAt === "action" && goneNote}
                           {i.unitPrice != null && !blocked ? (
                             <form class="order" method="post" action="/orders"
                                   data-name={i.name} data-price={String(i.unitPrice)} data-icon={iconUrl(i.typeId)}
-                                  data-limit={a ? allowanceWords(lang, p.limit!, a) : undefined}>
+                                  data-limit={a ? allowanceWords(lang, p.limit!, a) : undefined}
+                                  data-need={showNeed && left !== null ? t(lang, "needStill", { n: left }) : undefined}>
                               <input type="hidden" name="_csrf" value={p.session!.csrf} />
                               <input type="hidden" name="typeId" value={String(i.typeId)} />
                               {postingId && <input type="hidden" name="postingId" value={postingId} />}
                               {/* One unit each and the box is fixed at 1 (read-only, so it still posts); a
-                                  larger limit caps the box at what the buyer has left. */}
+                                  larger limit caps the box at what the buyer has left, a shown need at
+                                  what the store still takes. A need not shown is not given away here:
+                                  the refusal says how many. */}
                               {p.limit && p.limit.units === 1
                                 ? <input type="number" name="units" class="fixed" min="1" max="1" value="1" readonly required />
-                                : <input type="number" name="units" min="1" max={String(a ? Math.min(10_000, a.remaining) : 10_000)} value="1" required />}
+                                : <input type="number" name="units" min="1" max={String(max)} value="1" required />}
                               <button type="submit">{t(lang, buying ? "offerButton" : "orderButton")}</button>
                             </form>
                           ) : null}
@@ -210,8 +276,9 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
         </table>
         {c.sections.every((s) => s.items.length === 0) && <div class="empty">{t(lang, "emptyList")}</div>}
       </div>
-      {canOrder && <ConfirmDialog lang={lang} csrf={p.session!.csrf} mailbox={mailbox} postingId={postingId} buying={buying} to={to} place={place} />}
+      {canOrder && <ConfirmDialog lang={lang} csrf={p.session!.csrf} mailbox={mailbox} postingId={postingId} buying={buying} to={to} where={buyAtWords(lang, places)} />}
       {canOrder && <script dangerouslySetInnerHTML={{ __html: confirmScript(lang) }} />}
+      {showNeed && <p class="faint">{t(lang, "needNote")}</p>}
       <p class="faint">{t(lang, buying ? "offerNote" : "availabilityNote")}</p>
     </>
   );
@@ -222,7 +289,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
  * has a mailbox — whether to be kept posted by EVE mail. The row's own form still posts on its
  * own where the script does not run, so nothing depends on it.
  */
-const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?: string; buying: boolean; to: string; place: string }> = (p) => (
+const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?: string; buying: boolean; to: string; where: string }> = (p) => (
   <dialog id="confirm" class="confirm">
     <form method="post" action="/orders">
       <input type="hidden" name="_csrf" value={p.csrf} />
@@ -240,6 +307,7 @@ const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?
         <tr><th>{t(p.lang, "total")}</th><td class="total" data-f="total"></td></tr>
       </table>
       <p class="note limit" data-f="limit" hidden></p>
+      <p class="note need" data-f="need" hidden></p>
 
       {p.mailbox && (
         <label class="check">
@@ -250,7 +318,7 @@ const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?
       )}
       <p class="note">{p.buying
         ? t(p.lang, "confirmOfferNote", { to: p.to, myOrders: t(p.lang, "navMyOrders") })
-          + (p.place ? " " + t(p.lang, "buyAt", { place: p.place }) : "")
+          + (p.where ? " " + p.where : "")
         : t(p.lang, "confirmNote", { myOrders: t(p.lang, "navMyOrders") })}</p>
       <div class="actions">
         <button type="button" class="link" data-close>{t(p.lang, "dialogCancel")}</button>
@@ -313,6 +381,8 @@ const confirmScript = (lang: Lang) => `
       field('total').textContent = isk(units * price);
       field('limit').textContent = form.dataset.limit || '';
       field('limit').hidden = !form.dataset.limit;
+      field('need').textContent = form.dataset.need || '';
+      field('need').hidden = !form.dataset.need;
       dlg.querySelector('input[name=typeId]').value = form.querySelector('input[name=typeId]').value;
 
       dlg.querySelector('input[name=units]').value = String(units);
@@ -384,8 +454,9 @@ export interface OrdersProps {
   orders: OrderRow[];
   /** Who an offer's contract goes to, as the store last said. */
   buyAssignee?: Assignee | null;
-  /** Where that contract is to be made, when the store says. */
+  /** Where that contract is to be made, when the store says: an older app's one place, and every place. */
   buyLocation?: Place | null;
+  buyLocations?: Place[] | null;
 }
 
 /** Where an offer to sell stands: the contract to make, the contract made, or paid. */
@@ -438,7 +509,8 @@ export const OrdersPage: FC<OrdersProps> = (p) => {
   const lang = p.lang;
   const typeName = (o: OrderRow) => o.typeName ?? t(lang, "typeFallback", { id: String(o.typeId) });
   const to = p.buyAssignee?.name ?? "";
-  const place = p.buyLocation?.name ?? "";
+  const places = buyPlaces(p);
+  const place = places.length > 0 ? formatOr(lang, places) : "";
   // Which way each went, said only where the buyer has done both or sold at all: a column that
   // reads "You buy" on every row says nothing.
   const sold = p.orders.some((o) => o.side === "buy") || p.waiting.some((w) => w.lines.some((l) => l.side === "buy"));

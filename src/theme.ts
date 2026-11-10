@@ -164,6 +164,20 @@ table.grid tr.ineligible td { opacity: .4; }
 table.grid tr.ineligible:hover td { background: transparent; }
 input[type=number].fixed { color: var(--text-dim); background: var(--surface-panel-alt); }
 dialog.confirm .limit { color: var(--warn); }
+/* Three or more places a Buy listing's contracts may be made, under its intro. */
+.note ul.places { margin: 4px 0 0; padding-left: 20px; }
+.note ul.places li { margin: 1px 0; overflow-wrap: anywhere; }
+/* A Buy listing's need: the number still wanted over a thin bar of how much is covered. */
+table.grid td.need { min-width: 64px; }
+.needbar {
+  width: 64px; max-width: 100%; height: 4px; margin: 4px 0 0 auto; border-radius: 2px; overflow: hidden;
+  background: var(--border-default);
+}
+.needbar > span { display: block; height: 100%; background: var(--good); }
+@media (forced-colors: active) {
+  .needbar { border: 1px solid CanvasText; }
+  .needbar > span { background: Highlight; }
+}
 
 .item { display: flex; align-items: center; gap: 8px; }
 .item img { width: 24px; height: 24px; border-radius: 3px; background: var(--surface-input); flex: none; }

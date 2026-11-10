@@ -74,6 +74,15 @@ export function t(lang: Lang, key: Key, args?: Args): string {
   });
 }
 
+const orLists = new Map<Lang, Intl.ListFormat>();
+
+/** Names joined as the language lists alternatives: "A or B", "A, B, or C", "A oder B", "A或B". */
+export function formatOr(lang: Lang, items: string[]): string {
+  let f = orLists.get(lang);
+  if (!f) orLists.set(lang, (f = new Intl.ListFormat(lang, { type: "disjunction" })));
+  return f.format(items);
+}
+
 /** Words what code without the language said. */
 export const tell = (lang: Lang, s: Said): string => t(lang, s.key, s.args);
 

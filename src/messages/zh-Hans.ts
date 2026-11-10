@@ -147,6 +147,8 @@ export const zhHans: Translation = {
   tabBuyMark: "收购",
   buyIntro: "本店按所示价格收购以下物品。请报上你有的物品；本店确认后，请向 {to} 创建要价为总额的物品交换合同。",
   buyAt: "请在 {place} 创建所有合同。",
+  buyAtAny: "请在 {places} 创建每份合同。",
+  buyAtList: "请在以下任一地点创建每份合同：",
   buyNotTaking: "本店目前不受理报价。",
   signInToOffer: "请使用 EVE 登录以出售物品。价格以你报价时列出的为准。",
   colWePay: "我们支付",
@@ -169,4 +171,14 @@ export const zhHans: Translation = {
   colDirection: "类型",
   dirYouBuy: "你购买",
   dirYouSell: "你出售",
+
+  // ── What a Buy listing still needs ──────────────────────────────────────────
+  colNeeded: "需求",
+  needNote: "“需求”是本店每种物品还需要多少个；进度条显示计划用量中已经满足的部分。",
+  needBreakdown: "计划 {wanted} · 现有 {onHand} · 制造中 {inBuild} · 已订 {onOrder} · 报价中 {offered}",
+  needCovered: "{wanted} 个中已满足 {covered} 个",
+  noLongerNeeded: "已不再需要",
+  needStill: "我们还需要 {n} 个。",
+  notNeeded: "本店已不再需要此物品。",
+  overNeed: "本店对此物品只还需要 {n} 个。",
 };

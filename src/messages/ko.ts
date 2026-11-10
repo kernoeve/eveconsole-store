@@ -146,6 +146,8 @@ export const ko: Translation = {
   tabBuyMark: "매입",
   buyIntro: "이 상점은 아래 아이템을 표시된 가격에 매입합니다. 가진 것을 제안하십시오. 상점이 확인하면 {to} 앞으로 총액을 요구하는 아이템 교환 계약을 만드십시오.",
   buyAt: "모든 계약은 {place}에서 만드십시오.",
+  buyAtAny: "각 계약은 {places}에서 만드십시오.",
+  buyAtList: "각 계약은 다음 장소 중 한 곳에서 만드십시오:",
   buyNotTaking: "상점이 현재 판매 제안을 받지 않습니다.",
   signInToOffer: "아이템을 제안하려면 EVE로 로그인하십시오. 제안 시점에 표시된 가격이 적용됩니다.",
   colWePay: "매입가",
@@ -168,4 +170,14 @@ export const ko: Translation = {
   colDirection: "구분",
   dirYouBuy: "구매",
   dirYouSell: "판매",
+
+  // ── What a Buy listing still needs ──────────────────────────────────────────
+  colNeeded: "필요 수량",
+  needNote: "‘필요 수량’은 상점이 각 아이템을 몇 개 더 원하는지입니다. 막대는 계획된 수량 중 이미 확보된 비율을 보여 줍니다.",
+  needBreakdown: "계획 {wanted} · 보유 {onHand} · 제조 중 {inBuild} · 주문됨 {onOrder} · 제안됨 {offered}",
+  needCovered: "{wanted}개 중 {covered}개 확보",
+  noLongerNeeded: "더 이상 필요 없음",
+  needStill: "아직 {n}개가 필요합니다.",
+  notNeeded: "상점은 더 이상 이 아이템이 필요하지 않습니다.",
+  overNeed: "상점에 필요한 이 아이템은 이제 {n}개뿐입니다.",
 };

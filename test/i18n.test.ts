@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
 import app from "../src/index";
 import { signSync } from "../src/crypto";
-import { catalogues, formatNumber, LANGUAGES, langOf, t, type Lang, type Message } from "../src/i18n";
+import { catalogues, formatNumber, formatOr, LANGUAGES, langOf, t, type Lang, type Message } from "../src/i18n";
 import { en } from "../src/messages/en";
 import { describeLimit } from "../src/limits";
 import { PROTOCOL, SIGNATURE_HEADER, TIMESTAMP_HEADER, type SyncRequest } from "../src/protocol";
@@ -94,6 +94,14 @@ describe("the site's languages", () => {
     expect(ru(2)).toBe(ru(22));
     expect(ru(5)).toBe(ru(11));
     expect(new Set([ru(1), ru(2), ru(5)]).size).toBe(3);
+  });
+
+  it("lists places as alternatives the way each language does", () => {
+    expect(formatOr("en", ["A", "B"])).toBe("A or B");
+    expect(formatOr("de", ["A", "B", "C"])).toBe("A, B oder C");
+    expect(formatOr("ru", ["A", "B"])).toBe("A или B");
+    expect(formatOr("fr", ["A"])).toBe("A");
+    for (const lang of LANGUAGES) expect(formatOr(lang, ["Alpha", "Beta"])).toMatch(/^Alpha.+Beta$/);
   });
 });
 
