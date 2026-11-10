@@ -730,8 +730,12 @@ describe("listings: a tab each, and offers to sell to the store", () => {
   /** The row of the page that shows this item. */
   const rowOf = (page: string, name: string) => page.split("<tr").find((r) => r.includes(`<div>${name}</div>`)) ?? "";
   const flashOf = (r: Response) => JSON.parse(decodeURIComponent(/flash=([^;]+)/.exec(r.headers.get("Set-Cookie") ?? "")?.[1] ?? "{}")).text;
+  /** A row's need columns as text: Total Need, On Hand, In Build, On Order, Remaining. */
+  const needCells = (row: string) => [...row.matchAll(/<td class="num (?:optional|need)">([\s\S]*?)<\/td>/g)]
+    .map((m) => m[1].replace(/<[^>]+>/g, "").trim());
+  const needHeadings = [">Total Need<", ">On Hand<", ">In Build<", ">On Order<", ">Remaining<"];
 
-  it("shows what a Buy listing still needs: the number, a bar of what is covered, and no offers once nothing is", async () => {
+  it("shows what a Buy listing still needs: a column each, a bar of what is covered, and no offers once nothing is", async () => {
     await sync(withNeeds(needy([
       needItem(4101, "Need Full", { needed: 100, wanted: 100, onHand: 0, inBuild: 0, onOrder: 0 }),
       needItem(4102, "Need Part", { needed: 30, wanted: 120, onHand: 50, inBuild: 25, onOrder: 15 }),
@@ -740,11 +744,12 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     ])));
     const s = await signedIn();
     const page = await (await app.request("/?list=14", { headers: { Cookie: s.cookie } }, env)).text();
-    expect(page).toContain(">Needed<");
+    for (const heading of needHeadings) expect(page).toContain(heading);
     expect(page).toContain("the bar shows how much");
-    expect(page).not.toContain("In stock");           // the counts stay hidden on a Buy tab
+    expect(page).not.toContain("In stock");           // the store's stock columns stay hidden on a Buy tab
 
     const full = rowOf(page, "Need Full");
+    expect(needCells(full)).toEqual(["100", "0", "0", "0", "100"]);
     expect(full).toContain('aria-valuenow="0"');
     expect(full).toContain('style="width:0%"');
     expect(full).toContain('max="100"');
@@ -755,30 +760,33 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     expect(part).toContain('aria-valuenow="90"');
     expect(part).toContain('aria-valuetext="90 of 120 covered"');
     expect(part).toContain('style="width:75%"');
-    expect(part).toContain('title="Wanted 120 · on hand 50 · in build 25 · on order 15 · offered 0"');
+    expect(needCells(part)).toEqual(["120", "50", "25", "15", "30"]);
+    expect(part).not.toContain("title=");                    // the columns say it all; no hover breakdown
     expect(part).toContain('max="30"');
     expect(part).toContain('data-need="We still need 30 units."');
     expect(page).toContain('data-f="need"');
 
     const none = rowOf(page, "Need None");
     expect(none).toContain('class="ineligible"');
-    expect(none).toContain("No longer needed");
+    expect(none).toContain("No longer needed");               // where the offer button would be
+    expect(needCells(none)).toEqual(["40", "40", "0", "0", "0"]);
     expect(none).not.toContain('<form class="order"');
     expect(none).toContain('style="width:100%"');
 
     // An item the app sends no need for: nothing to show, nothing capped.
     const unknown = rowOf(page, "Need Unknown");
-    expect(unknown).toContain("—");
+    expect(needCells(unknown)).toEqual(["—", "—", "—", "—", "—"]);
     expect(unknown).not.toContain("progressbar");
     expect(unknown).toContain('max="10000"');
     expect(unknown).not.toContain("data-need");
 
     // Nothing of it on the Sell tab.
-    expect(await (await app.request("/?list=11", { headers: { Cookie: s.cookie } }, env)).text()).not.toContain(">Needed<");
-    // Signed out, with no offer column: the row is still dimmed, and says why in the Needed column.
+    const sell = await (await app.request("/?list=11", { headers: { Cookie: s.cookie } }, env)).text();
+    for (const heading of needHeadings) expect(sell).not.toContain(heading);
+    // Signed out, with no offer column: the row is still dimmed, and says why under Remaining.
     const out = rowOf(await (await app.request("/?list=14", {}, env)).text(), "Need None");
     expect(out).toContain('class="ineligible"');
-    expect(out).toContain("No longer needed");
+    expect(needCells(out)).toEqual(["40", "40", "0", "0", "No longer needed"]);
   });
 
   it("caps offers at the need when it is not shown, and says how many only when refusing", async () => {
@@ -788,7 +796,7 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     ], false)));
     const s = await signedIn();
     const page = await (await app.request("/?list=14", { headers: { Cookie: s.cookie } }, env)).text();
-    expect(page).not.toContain(">Needed<");
+    for (const heading of needHeadings) expect(page).not.toContain(heading);
     expect(page).not.toContain("progressbar");
     expect(page).not.toContain("data-need");
     const some = rowOf(page, "Hidden Some");
@@ -829,7 +837,7 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     expect((await post(s.cookie, { typeId: "4121", units: "4", postingId: "14" })).headers.get("Location")).toBe("/orders");
     let row = await page();
     expect(row).toContain('max="6"');
-    expect(row).toContain("offered 4");
+    expect(needCells(row)).toEqual(["10", "0", "0", "4", "6"]);   // On Order counts the offer still waiting
     expect(row).toContain('aria-valuenow="4"');
     expect(flashOf(await post(s.cookie, { typeId: "4121", units: "7", postingId: "14" }))).toBe("The store needs only 6 more units of that item.");
 
@@ -840,7 +848,7 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     await sync(withNeeds(needy([needItem(4121, "Counted Thing", { ...need, needed: 6, onOrder: 4 })]), { orders: [booked] }));
     row = await page();
     expect(row).toContain('max="6"');                         // not 2: the booked four are in the need already
-    expect(row).toContain("on order 4 · offered 0");
+    expect(needCells(row)).toEqual(["10", "0", "0", "4", "6"]);   // the same four, now the app's: not counted twice
     expect((await post(s.cookie, { typeId: "4121", units: "6", postingId: "14" })).headers.get("Location")).toBe("/orders");
   });
 

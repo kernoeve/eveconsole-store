@@ -172,9 +172,12 @@ export const de: Translation = {
   dirYouSell: "Sie verkaufen",
 
   // ── What a Buy listing still needs ──────────────────────────────────────────
-  colNeeded: "Bedarf",
-  needNote: "„Bedarf“ ist, wie viele Einheiten der Shop von jedem Gegenstand noch sucht; der Balken zeigt, wie viel von dem, was er einplant, schon gedeckt ist.",
-  needBreakdown: "Geplant {wanted} · vorrätig {onHand} · im Bau {inBuild} · bestellt {onOrder} · angeboten {offered}",
+  colTotalNeed: "Gesamtbedarf",
+  colOnHand: "Vorrätig",
+  colNeedInBuild: "Im Bau",
+  colOnOrder: "Bestellt",
+  colRemaining: "Verbleibend",
+  needNote: "„Verbleibend“ ist, wie viele Einheiten der Shop von jedem Gegenstand noch sucht; der Balken zeigt, wie viel vom Gesamtbedarf schon gedeckt ist. „Bestellt“ zählt auch Angebote, die noch auf den Shop warten.",
   needCovered: "{covered} von {wanted} gedeckt",
   noLongerNeeded: "Nicht mehr benötigt",
   needStill: { one: "Wir benötigen noch {n} Einheit.", other: "Wir benötigen noch {n} Einheiten." },

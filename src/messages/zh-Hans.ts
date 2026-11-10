@@ -173,9 +173,12 @@ export const zhHans: Translation = {
   dirYouSell: "你出售",
 
   // ── What a Buy listing still needs ──────────────────────────────────────────
-  colNeeded: "需求",
-  needNote: "“需求”是本店每种物品还需要多少个；进度条显示计划用量中已经满足的部分。",
-  needBreakdown: "计划 {wanted} · 现有 {onHand} · 制造中 {inBuild} · 已订 {onOrder} · 报价中 {offered}",
+  colTotalNeed: "总需求",
+  colOnHand: "现有",
+  colNeedInBuild: "制造中",
+  colOnOrder: "已订",
+  colRemaining: "剩余",
+  needNote: "“剩余”是本店每种物品还需要多少个；进度条显示总需求中已经满足的部分。“已订”包含仍在等待本店确认的报价。",
   needCovered: "{wanted} 个中已满足 {covered} 个",
   noLongerNeeded: "已不再需要",
   needStill: "我们还需要 {n} 个。",

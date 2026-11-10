@@ -172,9 +172,12 @@ export const ko: Translation = {
   dirYouSell: "판매",
 
   // ── What a Buy listing still needs ──────────────────────────────────────────
-  colNeeded: "필요 수량",
-  needNote: "‘필요 수량’은 상점이 각 아이템을 몇 개 더 원하는지입니다. 막대는 계획된 수량 중 이미 확보된 비율을 보여 줍니다.",
-  needBreakdown: "계획 {wanted} · 보유 {onHand} · 제조 중 {inBuild} · 주문됨 {onOrder} · 제안됨 {offered}",
+  colTotalNeed: "총 필요 수량",
+  colOnHand: "보유",
+  colNeedInBuild: "제조 중",
+  colOnOrder: "주문됨",
+  colRemaining: "남은 수량",
+  needNote: "‘남은 수량’은 상점이 각 아이템을 몇 개 더 원하는지입니다. 막대는 총 필요 수량 중 이미 확보된 비율을 보여 줍니다. ‘주문됨’에는 상점의 확인을 기다리는 제안도 포함됩니다.",
   needCovered: "{wanted}개 중 {covered}개 확보",
   noLongerNeeded: "더 이상 필요 없음",
   needStill: "아직 {n}개가 필요합니다.",

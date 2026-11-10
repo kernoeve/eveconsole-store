@@ -265,9 +265,12 @@ field leaves it.
 - Caps offers on a Buy item that carries `need` (site 0.3.0+) at `needed` less the units on its
   own offers for that listing and type the app has not answered yet (`submitted` or `review`;
   booked ones are in `onOrder` already). At none the row is greyed out and takes no offer.
-  With `showNeed` a Needed column shows what is left, with a bar of how much of `wanted` is
-  covered, and the offer box and dialog stop at it; without it the number is said only when an
-  offer is refused for asking more. An item without `need` is not capped.
+  With `showNeed` (columns from site 0.3.0-rc.2) a Buy tab shows Total Need (`wanted`), On Hand
+  (`onHand`), In Build (`inBuild`), On Order (`onOrder` plus the site's unanswered offers, one
+  number) and Remaining (what is left, with a bar of how much of `wanted` is covered); on a
+  phone only Remaining stays. The offer box and dialog stop at Remaining. Without `showNeed`
+  there are no columns, and the number is said only when an offer is refused for asking more.
+  An item without `need` is not capped and shows "—" in the columns.
 - Names every place in `store.buyLocations` (site 0.3.0+) wherever it named `buyLocation` —
   above a Buy listing, in the offer dialog, on My orders — as alternatives joined the way the
   store's language lists them ("A or B", "A, B, or C"); above a Buy listing, three or more are a

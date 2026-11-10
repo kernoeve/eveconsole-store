@@ -245,13 +245,16 @@ export const en = {
   dirYouSell: "You sell",
 
   // ── What a Buy listing still needs ──────────────────────────────────────────
-  /** A Buy listing's column: how many more of each item the store wants, a number over a small bar. */
-  colNeeded: "Needed",
-  /** Under a Buy listing whose need is shown: how to read the colNeeded column. */
-  needNote: "Needed is how many more of each item the store wants; the bar shows how much of what it plans to use is already covered.",
-  /** Hovering the colNeeded cell: where the number comes from, each a number of units. "Wanted" is what the store's
-   *  production plan needs in all; "offered" are offers like this one the store has not answered yet. */
-  needBreakdown: "Wanted {wanted} · on hand {onHand} · in build {inBuild} · on order {onOrder} · offered {offered}",
+  /** A Buy listing's columns when it shows its need, each a number of units: what the store's production plan needs
+   *  in all, what it holds, what its industry jobs are making, what is on offers to it already (confirmed or not),
+   *  and how many more it takes (a number over a small bar). Column headings: short. */
+  colTotalNeed: "Total Need",
+  colOnHand: "On Hand",
+  colNeedInBuild: "In Build",
+  colOnOrder: "On Order",
+  colRemaining: "Remaining",
+  /** Under a Buy listing whose need is shown: how to read the columns. Name them as their headings do. */
+  needNote: "Remaining is how many more of each item the store wants; the bar shows how much of the total need is already covered. On Order includes offers still waiting on the store.",
   /** The bar, read aloud by a screen reader: {covered} units of the {wanted} planned are covered already. */
   needCovered: "{covered} of {wanted} covered",
   /** In place of the offer button (or the number) when the store needs no more of an item. */

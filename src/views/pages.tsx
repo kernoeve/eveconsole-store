@@ -174,7 +174,14 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
             <tr>
               <th>{t(lang, "colItem")}</th>
               <th class="num">{t(lang, buying ? "colWePay" : "colPrice")}</th>
-              {showNeed && <th class="num">{t(lang, "colNeeded")}</th>}
+              {/* The need, figure by figure; on a phone only Remaining stays (the others are optional). */}
+              {showNeed && <>
+                <th class="num optional">{t(lang, "colTotalNeed")}</th>
+                <th class="num optional">{t(lang, "colOnHand")}</th>
+                <th class="num optional">{t(lang, "colNeedInBuild")}</th>
+                <th class="num optional">{t(lang, "colOnOrder")}</th>
+                <th class="num">{t(lang, "colRemaining")}</th>
+              </>}
               {!buying && <th>{t(lang, "colAvailability")}</th>}
               {showColumns.stock && <th class="num optional">{t(lang, "colInStock")}</th>}
               {showColumns.build && <th class="num optional">{t(lang, "colInBuild")}</th>}
@@ -186,7 +193,7 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
             {c.sections.map((s) => (
               <>
                 <tr class="section">
-                  <td colspan={7}>{s.name}</td>
+                  <td colspan={8}>{s.name}</td>
 
                 </tr>
                 {s.items.map((i) => {
@@ -214,19 +221,22 @@ export const CataloguePage: FC<CatalogueProps> = (p) => {
                         {i.unitPrice != null ? formatIsk(lang, i.unitPrice) : <span class="dim">{t(lang, buying ? "notBuying" : "notForSale")}</span>}
                         {goneAt === "price" && <div>{goneNote}</div>}
                       </td>
-                      {showNeed && (
-                        <td class="num need" title={need ? t(lang, "needBreakdown", {
-                          wanted: need.wanted, onHand: need.onHand, inBuild: need.inBuild, onOrder: need.onOrder,
-                          offered: offered.get(offerKey(listingId, i.typeId)) ?? 0,
-                        }) : undefined}>
-                          {need === null || left === null
-                            ? <span class="dim">—</span>
-                            : <>
-                                {goneAt === "need" ? goneNote : formatNumber(lang, left)}
-                                {need.wanted > 0 && <NeedBar lang={lang} wanted={need.wanted} left={left} />}
-                              </>}
-                        </td>
-                      )}
+                      {showNeed && (need === null || left === null
+                        ? <>
+                            {[1, 2, 3, 4].map(() => <td class="num optional"><span class="dim">—</span></td>)}
+                            <td class="num need"><span class="dim">—</span></td>
+                          </>
+                        : <>
+                            <td class="num optional">{formatNumber(lang, need.wanted)}</td>
+                            <td class="num optional">{formatNumber(lang, need.onHand)}</td>
+                            <td class="num optional">{formatNumber(lang, need.inBuild)}</td>
+                            {/* Booked or still waiting on the store, one number: which is no business of the seller's. */}
+                            <td class="num optional">{formatNumber(lang, need.onOrder + (offered.get(offerKey(listingId, i.typeId)) ?? 0))}</td>
+                            <td class="num need">
+                              {goneAt === "need" ? goneNote : formatNumber(lang, left)}
+                              {need.wanted > 0 && <NeedBar lang={lang} wanted={need.wanted} left={left} />}
+                            </td>
+                          </>)}
                       {!buying && <td>
                         {blocked ? (
                           <span class="state muted">{t(lang, "limitReached")}</span>

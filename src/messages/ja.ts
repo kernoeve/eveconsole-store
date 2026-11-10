@@ -172,9 +172,12 @@ export const ja: Translation = {
   dirYouSell: "売却",
 
   // ── What a Buy listing still needs ──────────────────────────────────────────
-  colNeeded: "必要数",
-  needNote: "「必要数」は、ストアが各アイテムをあと何個求めているかです。バーは、予定数のうちすでに確保できている割合を示します。",
-  needBreakdown: "予定 {wanted} · 手持ち {onHand} · 製造中 {inBuild} · 発注済み {onOrder} · 申込中 {offered}",
+  colTotalNeed: "総必要数",
+  colOnHand: "手持ち",
+  colNeedInBuild: "製造中",
+  colOnOrder: "発注済み",
+  colRemaining: "残り",
+  needNote: "「残り」は、ストアが各アイテムをあと何個求めているかです。バーは総必要数のうちすでに確保できている割合を示します。「発注済み」には、ストアの確認待ちの申込も含まれます。",
   needCovered: "{wanted}個中{covered}個確保済み",
   noLongerNeeded: "買取終了",
   needStill: "あと{n}個必要です。",
