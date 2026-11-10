@@ -181,7 +181,7 @@ describe("the sync call", () => {
     await sync(push());
     expect((await placeOrder(env.DB, buyer, sellListing, 2002, 1, "", true)).ok).toBe(false);
     expect((await placeOrder(env.DB, buyer, sellListing, 9999, 1, "", true)).ok).toBe(false);
-    expect((await placeOrder(env.DB, buyer, sellListing, 2001, 10_001, "", true)).ok).toBe(false);
+    expect((await placeOrder(env.DB, buyer, sellListing, 2001, 2_147_483_648, "", true)).ok).toBe(false);   // over a full stack
     expect((await placeOrder(env.DB, buyer, sellListing, 2001, 0, "", true)).ok).toBe(false);
 
     await sync(push({ orders: [{ id: 43, ref: "ZZ", buyerId: 2118000001, buyerType: "character", typeId: 2001, units: 1, totalPrice: 1, status: "pending", createdAt: "2026-09-19T00:00:00Z" }] }));
@@ -777,7 +777,7 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     const unknown = rowOf(page, "Need Unknown");
     expect(needCells(unknown)).toEqual(["—", "—", "—", "—", "—"]);
     expect(unknown).not.toContain("progressbar");
-    expect(unknown).toContain('max="10000"');
+    expect(unknown).toContain('max="2147483647"');            // a full stack
     expect(unknown).not.toContain("data-need");
 
     // Nothing of it on the Sell tab.
@@ -800,7 +800,7 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     expect(page).not.toContain("progressbar");
     expect(page).not.toContain("data-need");
     const some = rowOf(page, "Hidden Some");
-    expect(some).toContain('max="10000"');                   // the number is not given away
+    expect(some).toContain('max="2147483647"');              // the number is not given away
     const done = rowOf(page, "Hidden Done");
     expect(done).toContain('class="ineligible"');
     expect(done).toContain("No longer needed");
@@ -861,7 +861,10 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     expect(over).toEqual({ ok: false, reason: { key: "overNeed", args: { n: 3 } } });
     expect((await placeOrder(env.DB, buyer, listing, 4131, 3, "", true)).ok).toBe(true);
     expect(await placeOrder(env.DB, buyer, listing, 4131, 1, "", true)).toEqual({ ok: false, reason: { key: "notNeeded" } });
-    expect((await placeOrder(env.DB, buyer, listing, 4132, 10_000, "", true)).ok).toBe(true);
+    // Uncapped up to a full stack, and not one more.
+    expect((await placeOrder(env.DB, buyer, listing, 4132, 2_147_483_647, "", true)).ok).toBe(true);
+    expect(await placeOrder(env.DB, buyer, listing, 4132, 2_147_483_648, "", true))
+      .toEqual({ ok: false, reason: { key: "tooMany", args: { max: 2_147_483_647 } } });
     // The same need on another listing is that listing's own.
     expect((await placeOrder(env.DB, buyer, { ...listing, id: 15 }, 4131, 3, "", true)).ok).toBe(true);
   });

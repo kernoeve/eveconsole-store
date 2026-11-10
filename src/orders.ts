@@ -24,8 +24,10 @@ export interface WebOrder {
   createdAt: string;
 }
 
-/** The most of one item a web order may ask for — the same bound the app's mail path enforces. */
-export const MAX_UNITS = 10_000;
+/** The most of one item a web order may ask for — the same bound the app's mail path enforces:
+ * a full stack, the most the game holds in one place and an item exchange contract can carry
+ * (2^31 − 1). It was 10,000, which turned away offers of ore, ice and minerals. */
+export const MAX_UNITS = 2_147_483_647;
 
 /** Units of each type in web orders the app has not yet taken: shown as unavailable so two
  * buyers cannot both see the last unit. Offers to sell take nothing off the shelf. */
