@@ -375,8 +375,9 @@ const confirmScript = (lang: Lang) => `
   var dlg = document.getElementById('confirm');
   if (!dlg || typeof dlg.showModal !== 'function') return;
   var fmt = new Intl.NumberFormat(${scriptValue(lang)}, { maximumFractionDigits: 0 });
+  var iskFmt = new Intl.NumberFormat(${scriptValue(lang)}, { maximumFractionDigits: 2 });
   var iskWords = ${scriptValue(template(lang, "iskAmount"))};
-  var isk = function (n) { return iskWords.replace('{amount}', fmt.format(n)); };
+  var isk = function (n) { return iskWords.replace('{amount}', iskFmt.format(n)); };
   var field = function (k) { return dlg.querySelector('[data-f=' + k + ']'); };
   document.querySelectorAll('form.order').forEach(function (form) {
     form.addEventListener('submit', function (e) {

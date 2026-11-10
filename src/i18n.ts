@@ -86,8 +86,18 @@ export function formatOr(lang: Lang, items: string[]): string {
 /** Words what code without the language said. */
 export const tell = (lang: Lang, s: Said): string => t(lang, s.key, s.args);
 
+const iskFormats = new Map<Lang, Intl.NumberFormat>();
+
+/** An ISK figure as the language writes one, with its cents when it has any: the app sends prices
+ * under 10,000 to the cent (2,412.50), and showing them whole would quote a different price. */
+export function formatIskNumber(lang: Lang, n: number): string {
+  let f = iskFormats.get(lang);
+  if (!f) iskFormats.set(lang, (f = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 })));
+  return f.format(n);
+}
+
 /** An amount of ISK, as the language writes one. */
-export const formatIsk = (lang: Lang, n: number): string => t(lang, "iskAmount", { amount: n });
+export const formatIsk = (lang: Lang, n: number): string => t(lang, "iskAmount", { amount: formatIskNumber(lang, n) });
 
 /** A plain message's own text with its placeholders left in: for a script in the page that fills them itself. */
 export function template(lang: Lang, key: Key): string {

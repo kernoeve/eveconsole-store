@@ -278,6 +278,18 @@ describe("the buyer's pages", () => {
     expect(html).toContain("Sign in with EVE");
   });
 
+  it("quotes a price with its cents, as the app sends it", async () => {
+    const cheap = { ...catalogue, hash: "cents", sections: [{ name: "Composites", items: [
+      { typeId: 2003, name: "Fiber", typeName: "Fiber", unitPrice: 2_412.5, inStock: 0, inBuild: 0, reserved: 0 },
+      { typeId: 2004, name: "Oxidizer", typeName: "Oxidizer", unitPrice: 2_400, inStock: 0, inBuild: 0, reserved: 0 },
+    ] }] };
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone" }, catalogue: cheap }));
+    const html = await (await app.request("/", {}, env)).text();
+    expect(html).toContain("2,412.5 ISK");           // not 2,413: the price is the app's, to the cent
+    expect(html).toContain("2,400 ISK");             // and a whole price stays whole
+    await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }));   // back as the other tests expect it
+  });
+
   it("lets a signed-in buyer order from the page, see it waiting, and withdraw it", async () => {
     await sync(push({ store: { ...push().store, senderPolicy: "anyone" } }));
     const s = await signedIn();
