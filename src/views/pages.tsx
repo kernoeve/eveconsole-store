@@ -319,6 +319,15 @@ const ConfirmDialog: FC<{ lang: Lang; csrf: string; mailbox: boolean; postingId?
       <p class="note limit" data-f="limit" hidden></p>
       <p class="note need" data-f="need" hidden></p>
 
+      {/* An offer only: when the seller expects to make the contract. Blank on every open; the
+          store's order takes it as its expected date when one is picked. */}
+      {p.buying && (
+        <label class="field">
+          <span>{t(p.lang, "expectedContractDate")}</span>
+          <input type="date" name="expectedDate" value="" />
+        </label>
+      )}
+
       {p.mailbox && (
         <label class="check">
           <input type="hidden" name="mailUpdatesAsked" value="1" />
@@ -397,6 +406,13 @@ const confirmScript = (lang: Lang) => `
       dlg.querySelector('input[name=typeId]').value = form.querySelector('input[name=typeId]').value;
 
       dlg.querySelector('input[name=units]').value = String(units);
+      // Blank each time, and nothing before today in the seller's own calendar.
+      var when = dlg.querySelector('input[name=expectedDate]');
+      if (when) {
+        var d = new Date();
+        when.value = '';
+        when.min = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      }
       dlg.showModal();
     });
   });
@@ -494,8 +510,9 @@ function orderState(lang: Lang, o: OrderRow, to = "", place = ""): { cls: string
     default:
       switch (o.fulfilment) {
         case "contract": return { cls: "info", text: o.contractId ? t(lang, "stateContract", { id: String(o.contractId) }) : t(lang, "stateContractIssued") };
-        case "stock":    return { cls: "good", text: o.estimatedDate ? t(lang, "stateInStockBy", { date: o.estimatedDate }) : t(lang, "stateInStock") };
-        case "job":      return { cls: "warn", text: o.estimatedDate ? t(lang, "stateBuildingBy", { date: o.estimatedDate }) : t(lang, "stateBuilding") };
+        // The expected date goes on its own line under the state (ExpectedDate), as an offer's does.
+        case "stock":    return { cls: "good", text: t(lang, "stateInStock") };
+        case "job":      return { cls: "warn", text: t(lang, "stateBuilding") };
         default:         return { cls: "muted", text: t(lang, "stateWaitingSlot") };
       }
   }
@@ -510,6 +527,15 @@ function webState(lang: Lang, w: WebOrder): { cls: string; text: string } {
     default:                 return { cls: "muted", text: w.state };
   }
 }
+
+/**
+ * The expected date under a state, on either side: an offer's is when its contract is expected
+ * (the seller's own until the store books it, then the store's), an order's when it is expected
+ * to be ready.
+ */
+const ExpectedDate: FC<{ lang: Lang; date: string; offer: boolean }> = (p) => (
+  <span class="when">{t(p.lang, p.offer ? "offerExpectedBy" : "orderExpectedBy", { date: p.date.slice(0, 10) })}</span>
+);
 
 /** How the order reached the store. */
 function via(lang: Lang, o: OrderRow): string {
@@ -539,13 +565,14 @@ export const OrdersPage: FC<OrdersProps> = (p) => {
             {p.waiting.map((w) => {
               const st = webState(lang, w);
               const lines = w.lines.map((l) => orderLine(lang, l.units, l.name)).join(", ");
+              const expected = (w.state === "submitted" || w.state === "review") ? w.lines.find((l) => l.expectedDate)?.expectedDate : undefined;
               return (
                 <tr>
                   <td class="num">{w.createdAt.slice(0, 16).replace("T", " ")}</td>
                   {sold && direction(w.lines.some((l) => l.side === "buy"))}
                   <td>{lines}</td>
                   <td class="num">{formatIsk(lang, w.total)}</td>
-                  <td><span class={`state ${st.cls}`}>{st.text}</span></td>
+                  <td><span class={`state ${st.cls}`}>{st.text}</span>{expected && <ExpectedDate lang={lang} date={expected} offer />}</td>
                   <td class="right">
                     {(w.state === "submitted" || w.state === "review") && (
                       <form class="cancel" method="post" action={`/web-orders/${w.id}/cancel`}
@@ -587,7 +614,10 @@ export const OrdersPage: FC<OrdersProps> = (p) => {
                   <td><Item typeId={o.typeId} name={typeName(o)} /></td>
                   <td class="num">{formatNumber(lang, o.units)}</td>
                   <td class="num">{formatIsk(lang, o.totalPrice)}</td>
-                  <td><span class={`state ${st.cls}`}>{st.text}</span></td>
+                  <td>
+                    <span class={`state ${st.cls}`}>{st.text}</span>
+                    {o.status === "pending" && o.estimatedDate && <ExpectedDate lang={lang} date={o.estimatedDate} offer={o.side === "buy"} />}
+                  </td>
                   <td class="optional dim">{via(lang, o)}</td>
 
                   <td class="right">

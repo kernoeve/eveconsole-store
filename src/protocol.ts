@@ -263,6 +263,8 @@ export interface SiteEvent {
   lines?: { typeId: number; units: number; unitPrice: number; postingId?: number }[];
   /** "buy" for an offer to sell to a Buy listing; absent for an order. */
   side?: "buy";
+  /** An offer only: when the seller expects to make the contract, "yyyy-mm-dd"; absent when they left it blank. */
+  expectedDate?: string;
   contractTo?: { id: number; name: string; kind: "character" | "corporation" } | null;
   note?: string;
   /** The buyer's answer to "keep me posted by EVE mail"; absent means yes. */

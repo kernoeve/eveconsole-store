@@ -188,8 +188,9 @@ table.grid td.need { min-width: 64px; }
 .state.info { color: var(--info); background: var(--info-surface); }
 .state.bad  { color: var(--bad);  background: var(--bad-surface); }
 .state.muted { color: var(--text-muted); background: var(--surface-panel-alt); }
+.when { display: block; margin-top: 3px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 form.order { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
-input[type=number], input[type=text], textarea {
+input[type=number], input[type=text], input[type=date], textarea {
   background: var(--surface-input); color: var(--text-primary); border: 1px solid var(--border-default);
   border-radius: 3px; padding: 4px 6px; font: inherit; font-size: 12px;
 }
@@ -238,6 +239,8 @@ dialog.confirm table.facts th { text-align: left; font-weight: normal; color: va
 dialog.confirm table.facts td { text-align: right; font-variant-numeric: tabular-nums; padding: 4px 0; }
 dialog.confirm table.facts td.total { color: var(--text-bright); font-weight: 600; border-top: 1px solid var(--border-subtle); }
 dialog.confirm label.check { display: flex; gap: 8px; align-items: center; font-size: 12px; margin: 8px 0 0; cursor: pointer; }
+dialog.confirm label.field { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; color: var(--text-muted); margin: 10px 0 0; }
+dialog.confirm label.field input { color-scheme: inherit; }
 dialog.confirm .note { margin: 10px 0 0; }
 dialog.confirm .actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin-top: 14px; }
 dialog.confirm button.primary { padding: 6px 16px; }

@@ -165,7 +165,9 @@ overlays carry alpha first, as Avalonia writes it).
 
       "catalogueHash": "…",        // the catalogue the buyer was looking at
       "lines": [ { "typeId": 2001, "units": 2, "unitPrice": 1100000, "postingId": 11 } ],   // priced by the site from the listing it holds; postingId from 0.2.0
-      "side": "buy"                // only on an offer to sell to a Buy listing (site 0.2.0+)
+      "side": "buy",               // only on an offer to sell to a Buy listing (site 0.2.0+)
+      "expectedDate": "2026-09-25" // an offer only, when the seller picked one: when they expect to make the
+                                   // contract, yyyy-mm-dd; the app takes it as the order's estimated date (site 0.3.0+)
     },
     {
       "seq": 125, "kind": "cancel", "at": "2026-09-19T20:05:00Z",

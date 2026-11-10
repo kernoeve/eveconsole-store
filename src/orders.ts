@@ -11,7 +11,11 @@ import { said, type Said } from "./i18n";
 import type { CatalogueItem, Listing, Need, OrderRow, SiteEvent } from "./protocol";
 
 /** One line of a web order, with the listing it came from: "buy" is an offer to sell to the store. */
-export interface WebOrderLine { typeId: number; name: string; units: number; unitPrice: number; postingId?: number; side?: "sell" | "buy" }
+export interface WebOrderLine {
+  typeId: number; name: string; units: number; unitPrice: number; postingId?: number; side?: "sell" | "buy";
+  /** An offer's expected contract date, "yyyy-mm-dd", shown on My orders until the store books it. */
+  expectedDate?: string;
+}
 
 export interface WebOrder {
   id: string;
@@ -131,10 +135,12 @@ export type Outcome = { ok: true; id?: string } | { ok: false; reason: Said };
  */
 export async function placeOrder(
   db: D1Database, s: Session, listing: Listing,
-  typeId: number, units: number, note: string, mailUpdates: boolean,
+  typeId: number, units: number, note: string, mailUpdates: boolean, expectedDate?: string,
 ): Promise<Outcome> {
 
   const buying = listing.side === "buy";
+  // The seller's own estimate of when the contract comes; only an offer has one.
+  const expected = buying ? contractDate(expectedDate) : undefined;
   const catalogue = listing.catalogue;
   const catalogueHash = catalogue.hash ?? "";
   const item = catalogue.sections.flatMap((x) => x.items).find((i) => i.typeId === typeId);
@@ -155,7 +161,7 @@ export async function placeOrder(
     if (left !== null && units > left) return { ok: false, reason: said("overNeed", { n: left }) };
   }
   if (units > MAX_UNITS) return { ok: false, reason: said("tooMany", { max: MAX_UNITS }) };
-  const line: WebOrderLine = { typeId, name: item.name, units, unitPrice: item.unitPrice, postingId, side: buying ? "buy" : undefined };
+  const line: WebOrderLine = { typeId, name: item.name, units, unitPrice: item.unitPrice, postingId, side: buying ? "buy" : undefined, expectedDate: expected };
   const id = newId();
   const ts = now();
   // One round trip for the order and its event: the buyer is waiting on this.
@@ -171,10 +177,25 @@ export async function placeOrder(
       lines: [{ typeId, units, unitPrice: item.unitPrice, postingId }],
       contractTo: null, note: note.slice(0, 500), catalogueHash, mailUpdates,
       ...(buying ? { side: "buy" as const } : {}),
+      ...(expected ? { expectedDate: expected } : {}),
     }),
   ]);
   return { ok: true, id };
+}
 
+/**
+ * An offer's expected contract date as the form sent it, "yyyy-mm-dd", or undefined. Blank, not
+ * a real date, or before yesterday (EVE time; the seller's own day may still be yesterday) is
+ * none: the picker offers nothing earlier, so only a hand-made form sends one, and the offer
+ * stands without it.
+ */
+export function contractDate(v: string | undefined | null): string | undefined {
+  const s = (v ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return undefined;
+  const d = new Date(s + "T00:00:00Z");
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return undefined;
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  return s >= yesterday ? s : undefined;
 }
 
 /** Withdraws a web order the app has not booked yet. */

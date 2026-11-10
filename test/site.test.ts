@@ -669,6 +669,41 @@ describe("listings: a tab each, and offers to sell to the store", () => {
     expect(await read()).toContain(">Paid<");
   });
 
+  it("takes an offer's expected contract date, only a real one, and shows it on My orders", async () => {
+    await sync(two());
+    const s = await signedIn();
+    const buyTab = await (await app.request("/?list=12", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(buyTab).toContain('<input type="date" name="expectedDate" value=""');
+    expect(buyTab).toContain("Expected contract date (optional)");
+    const sellTab = await (await app.request("/?list=11", { headers: { Cookie: s.cookie } }, env)).text();
+    expect(sellTab).not.toContain('name="expectedDate"');   // an order to buy has no contract of the buyer's to date
+
+    const soon = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    for (const expectedDate of [soon, "", "2020-01-01", "2026-02-30", "soon"])
+      await post(s.cookie, { typeId: "2003", units: "1", postingId: "12", expectedDate });
+    await post(s.cookie, { typeId: "2003", units: "1", postingId: "11", expectedDate: soon });
+    const events = (await (await sync(two())).json<SyncResponse>()).events.filter((e) => e.kind === "order").slice(-6);
+    expect(events.map((e) => e.expectedDate)).toEqual([soon, undefined, undefined, undefined, undefined, undefined]);
+
+    // Waiting: the seller's own date. Booked: whatever date the store's order carries.
+    const read = async () => await (await app.request("/orders", { headers: { Cookie: s.cookie } }, env)).text();
+    expect((await read()).split(`Contract expected ${soon}`).length - 1).toBe(1);
+    const row = { id: 71, ref: "OF2", buyerId: buyer.characterId, buyerType: "character", typeId: 2003, typeName: "Sprocket",
+                  units: 1, totalPrice: 40_000, status: "pending", createdAt: "2026-09-19T00:00:00Z", side: "buy", postingId: 12,
+                  estimatedDate: "2026-12-01" };
+    // An order on the Sell side shows its own expected date the same way, under its state.
+    const bought = { ...row, id: 72, ref: "OR3", side: undefined, postingId: 11, totalPrice: 55_000,
+                     fulfilment: "stock", estimatedDate: "2026-12-02" };
+    await sync(two({ orders: [row, bought] }));
+    let html = await read();
+    expect(html).toContain("Contract expected 2026-12-01");
+    expect(html).toMatch(/>In stock<\/span>\s*<span class="when">Expected 2026-12-02<\/span>/);
+    await sync(two({ orders: [{ ...row, status: "completed" }, { ...bought, status: "completed" }] }));
+    html = await read();
+    expect(html).not.toContain("Contract expected 2026-12-01");
+    expect(html).not.toContain("Expected 2026-12-02");
+  });
+
   it("says where contracts are made when the store names a place: above the Buy listing, in the offer dialog, on My orders", async () => {
     const at = { id: 1035466617946, name: "Perimeter - Tranquility Trading Tower" };
     const row = { id: 71, ref: "OF2", buyerId: buyer.characterId, buyerType: "character", typeId: 3001, typeName: "Ore Thing",

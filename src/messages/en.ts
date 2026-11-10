@@ -119,6 +119,8 @@ export const en = {
   total: "Total",
   state: "State",
   mailUpdatesAsk: "Keep me posted by EVE mail as this order moves",
+  /** The offer dialog's optional date: when the seller expects to make the contract. Blank unless they pick one. */
+  expectedContractDate: "Expected contract date (optional)",
   /** {myOrders} is navMyOrders, the page's name in the header. */
   confirmNote: "The price is as listed now. The store confirms the order within a couple of minutes, and it can be cancelled from {myOrders} until it is contracted.",
   /** Closes a dialog without doing anything (not "cancel the order"). */
@@ -180,12 +182,11 @@ export const en = {
   /** {id} is the in-game contract's number. */
   stateContract: "Contract {id} — accept it in game",
   stateContractIssued: "Contract issued",
-  /** {date} is the store's estimate, "2026-10-02". */
-  stateInStockBy: "In stock · expected {date}",
   stateInStock: "In stock",
-  stateBuildingBy: "Being built · expected {date}",
   stateBuilding: "Being built",
   stateWaitingSlot: "Confirmed · waiting for a build slot",
+  /** Under an order's state on My orders: the store's expected date for it, "2026-10-02". */
+  orderExpectedBy: "Expected {date}",
   webSubmitted: "Sent to the store — not confirmed yet",
   webReview: "The store is looking at it",
   /** {reason} is the store's own explanation, already in the store's language. */
@@ -232,6 +233,8 @@ export const en = {
   offerSent: "Offer sent to the store. Once it is confirmed, {myOrders} shows the contract to make.",
   notOnBuyList: "That item is not on this list.",
   offerPaid: "Paid",
+  /** Under an offer's state on My orders: when the seller expects to make the contract. {date} is 2026-09-29. */
+  offerExpectedBy: "Contract expected {date}",
   /** {id} is the contract's number; {asked} what it asks and {agreed} what was agreed, both iskAmount. */
   offerContractAsksMore: "Contract {id} asks {asked} against {agreed} agreed — waiting for the store",
   offerContractReceived: "Contract {id} received — waiting for the store to accept it",

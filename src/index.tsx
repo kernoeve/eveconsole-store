@@ -218,7 +218,7 @@ app.post("/orders", async (c) => {
   const asked = form.get("mailUpdatesAsked") != null;
   const mailUpdates = asked ? form.get("mailUpdates") != null : true;
   const r = await placeOrder(c.env.DB, session, listing,
-    typeId, units, String(form.get("note") ?? ""), mailUpdates);
+    typeId, units, String(form.get("note") ?? ""), mailUpdates, String(form.get("expectedDate") ?? ""));
 
 
   if (r.ok) {
